@@ -40,7 +40,18 @@ Includes ready-to-use wrappers for **Python**, **C/C++**, **Objective-C**, and *
 │   ├── FRConjugation.h
 │   └── FRConjugation.m
 │
-└── swift_wrapper/                   ← Swift wrapper
+├── swift_lib/                       ← Swift Package (idiomatic, typed API) ★
+│   ├── Package.swift
+│   ├── Sources/
+│   │   ├── CFRConjugation/          ← C bridge module
+│   │   └── FRConjugation/
+│   │       ├── Conjugator.swift      ← Main Conjugator class
+│   │       └── Types.swift           ← Mode / Tense / Person enums
+│   └── Tests/
+│       └── FRConjugationTests/
+│           └── ConjugationTests.swift
+│
+└── swift_wrapper/                   ← Legacy Swift wrapper (string-based, ObjC bridge)
     ├── ConjugationModel.swift
     ├── Bridging-Header.h
     └── main.swift
@@ -188,12 +199,27 @@ fr_conjugation_conjugate(model, "parler", "indicatif", "present", "1s", buf, siz
 fr_conjugation_free(model);
 ```
 
-### Swift usage
+### Swift usage (recommended: swift_lib)
 
 ```swift
-let model = try ConjugationModel(directory: "path/to/c_wrapper")
-model.conjugate("parler", mode: "indicatif", tense: "present", person: "1s")
-// → "parle"
+import FRConjugation
+
+let conjugator = try Conjugator(modelDirectory: "path/to/c_wrapper")
+
+// Fully typed — no raw strings
+conjugator.conjugate("aller",
+    mode: .indicatif, tense: .present, person: .firstPersonSingular)
+// → "vais"
+
+// Full paradigm
+let forms = conjugator.conjugate("finir", mode: .indicatif, tense: .present)
+for (person, form) in forms {
+    print("\(person.pronoun) \(form)")
+}
+
+// Participle with agreement
+conjugator.participle("partir", form: .passeFemininPlural)
+// → "parties"
 ```
 
 See [WRAPPERS.md](WRAPPERS.md) for complete build instructions and API reference.
@@ -223,6 +249,18 @@ cd c_wrapper/build
 ./test_conjugation ..
 ```
 
+### Swift package tests (15 tests)
+
+```bash
+cd swift_lib
+swift test \
+  -Xlinker -L../c_wrapper/build \
+  -Xlinker -L"$LIBTORCH/lib" \
+  -Xlinker -rpath -Xlinker ../c_wrapper/build \
+  -Xlinker -rpath -Xlinker "$LIBTORCH/lib" \
+  -Xlinker -lc10 -Xlinker -ltorch -Xlinker -ltorch_cpu
+```
+
 ---
 
 ## Requirements
@@ -232,7 +270,8 @@ cd c_wrapper/build
 | Python model | Python 3.10+, PyTorch 2.x |
 | Training | + `tqdm` (optional, for progress bars) |
 | C library | CMake ≥ 3.18, LibTorch 2.x, C++17 compiler |
-| ObjC/Swift | Xcode ≥ 14, the built C library |
+| ObjC wrapper | Xcode ≥ 14, the built C library |
+| Swift package | Swift 5.9+, the built C library |
 
 ---
 

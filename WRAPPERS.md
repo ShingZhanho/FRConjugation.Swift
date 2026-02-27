@@ -7,9 +7,11 @@ Python (PyTorch)  →  export_model.py  →  4 traced .pt files + JSON
                                               ↓
                           C++ / C library  (LibTorch)     ← c_wrapper/
                                               ↓
-                          Objective-C wrapper              ← objc_wrapper/
-                                              ↓
-                          Swift wrapper                    ← swift_wrapper/
+                    ┌─────────────────────────┬──────────────────────────┐
+                    │                         │                          │
+              Objective-C wrapper       Swift Package              Swift wrapper
+                objc_wrapper/            swift_lib/              swift_wrapper/
+              (string-based API)      (typed enum API)         (ObjC-bridged)
 ```
 
 ---
@@ -110,28 +112,106 @@ NSArray *aux = [model auxiliaryForVerb:@"aller"];
 
 ---
 
-## Step 4 — Swift
+## Step 4 — Swift (Recommended: Swift Package)
 
-1. Add the ObjC files from Step 3
-2. Set **Objective-C Bridging Header** → `swift_wrapper/Bridging-Header.h`
-3. Add `swift_wrapper/ConjugationModel.swift` to your target
+The `swift_lib/` directory is a Swift Package (`FRConjugation`) that provides a
+fully typed, idiomatic Swift API with enums for mode, tense, and person — no raw
+strings needed.
+
+### Add to your project
+
+In Xcode: **File → Add Package Dependencies → Add Local** and select
+`swift_lib/`.  Or in `Package.swift`:
+
+```swift
+.package(path: "../swift_lib")
+```
+
+### Build
+
+The library links against `libfrconjugation`. Pass the linker search paths:
+
+```bash
+cd swift_lib
+
+LIBTORCH=~/.pyenv/versions/ml-fr-conj/lib/python3.14/site-packages/torch
+
+swift build \
+  -Xlinker -L../c_wrapper/build \
+  -Xlinker -L"$LIBTORCH/lib" \
+  -Xlinker -rpath -Xlinker ../c_wrapper/build \
+  -Xlinker -rpath -Xlinker "$LIBTORCH/lib" \
+  -Xlinker -lc10 -Xlinker -ltorch -Xlinker -ltorch_cpu
+```
+
+### Usage
+
+```swift
+import FRConjugation
+
+let conjugator = try Conjugator(modelDirectory: "/path/to/c_wrapper")
+
+// Single form — fully typed
+conjugator.conjugate("aller",
+    mode: .indicatif, tense: .present, person: .firstPersonSingular)
+// → "vais"
+
+// Full paradigm for a tense
+let forms = conjugator.conjugate("avoir", mode: .indicatif, tense: .present)
+for (person, form) in forms {
+    print("\(person.pronoun) \(form)")
+}
+// je ai, tu as, il a, ...
+
+// Compound tenses
+conjugator.conjugate("aller",
+    mode: .indicatif, tense: .passeCompose, person: .thirdPersonFeminineSingular)
+// → "est allée"
+
+// Participles with gender/number agreement
+conjugator.participle("partir", form: .passeFemininPlural)
+// → "parties"
+
+// Queries
+conjugator.hasVerb("parler")         // true
+conjugator.isHAspire("hurler")       // true
+conjugator.verbCount                 // 6132
+
+let aux = conjugator.auxiliary(for: "aller")
+aux.etre        // true
+aux.pronominal  // true
+```
+
+### Enums
+
+| Enum | Cases |
+|:-----|:------|
+| `Mode` | `.indicatif` `.subjonctif` `.conditionnel` `.imperatif` `.participe` |
+| `Tense` | `.present` `.imparfait` `.passeSimple` `.futurSimple` `.passeCompose` `.plusQueParfait` `.passeAnterieur` `.futurAnterieur` `.passe` |
+| `Person` | `.firstPersonSingular` `.secondPersonSingular` `.thirdPersonMasculineSingular` `.thirdPersonFeminineSingular` `.firstPersonPlural` `.secondPersonPlural` `.thirdPersonMasculinePlural` `.thirdPersonFemininePlural` |
+| `ParticipleForm` | `.present` `.passeMasculinSingular` `.passeFemininSingular` `.passeMasculinPlural` `.passeFemininPlural` |
+
+### Run tests
+
+```bash
+swift test \
+  -Xlinker -L../c_wrapper/build \
+  -Xlinker -L"$LIBTORCH/lib" \
+  -Xlinker -rpath -Xlinker ../c_wrapper/build \
+  -Xlinker -rpath -Xlinker "$LIBTORCH/lib" \
+  -Xlinker -lc10 -Xlinker -ltorch -Xlinker -ltorch_cpu
+```
+
+### Alternative: ObjC-bridged Swift wrapper
+
+The `swift_wrapper/` directory contains a simpler, string-based Swift class
+that goes through the Objective-C layer via a bridging header. See
+`swift_wrapper/ConjugationModel.swift` for details.
 
 ```swift
 let model = try ConjugationModel(directory: "/path/to/c_wrapper")
-
 model.conjugate("parler", mode: "indicatif", tense: "present", person: "1s")
 // → "parle"
-
-model.conjugate("aller", mode: "indicatif", tense: "passe_compose", person: "3sf")
-// → "est allée"
-
-model.participle("prendre", forme: "passe_sf")
-// → "prise"
-
-model.hasVerb("parler")         // true
-model.auxiliary(for: "aller")   // ["être"]
-model.isHAspire("hurler")      // true
-model.verbCount                 // 6132
 ```
 
 ---
@@ -171,7 +251,20 @@ All buffer-writing functions return bytes written (excl. NUL) or -1 on error.
 | `-isHAspire:` | `BOOL` |
 | `.verbCount` | `NSInteger` |
 
-### Swift (`ConjugationModel`)
+### Swift (`Conjugator` — swift_lib)
+
+| Method / Property | Returns |
+|:------------------|:--------|
+| `init(modelDirectory:) throws` | — |
+| `conjugate(_:mode:tense:person:)` | `String?` |
+| `conjugate(_:mode:tense:)` | `[Person: String]` |
+| `participle(_:form:)` | `String?` |
+| `hasVerb(_:)` | `Bool` |
+| `auxiliary(for:)` | `Auxiliary` |
+| `isHAspire(_:)` | `Bool` |
+| `verbCount` | `Int` |
+
+### Swift (`ConjugationModel` — swift_wrapper)
 
 | Method / Property | Returns |
 |:------------------|:--------|
@@ -204,8 +297,19 @@ objc_wrapper/
   FRConjugation.h             ObjC class interface
   FRConjugation.m             ObjC implementation
 
-swift_wrapper/
-  ConjugationModel.swift      Swift class
+swift_lib/                    ★ Recommended Swift integration
+  Package.swift               Swift Package manifest
+  Sources/
+    CFRConjugation/           C bridge module (exposes conjugation.h)
+    FRConjugation/
+      Conjugator.swift        Main Conjugator class
+      Types.swift             Mode / Tense / Person / ParticipleForm enums
+  Tests/
+    FRConjugationTests/
+      ConjugationTests.swift  15 unit tests
+
+swift_wrapper/                Legacy string-based Swift wrapper (ObjC-bridged)
+  ConjugationModel.swift      Swift class (string parameters)
   Bridging-Header.h           ObjC → Swift bridge
   main.swift                  Swift smoke test
 ```

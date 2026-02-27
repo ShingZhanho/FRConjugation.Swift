@@ -26,6 +26,11 @@ c_wrapper/json.hpp
 *.dylib
 *.so
 
+# ── Swift / SPM ───────────────────────────────────────
+.build/
+.swiftpm/
+Package.resolved
+
 # ── Large binary files (use Git LFS or download separately) ──
 # PyTorch model checkpoints
 python_model/*.pt

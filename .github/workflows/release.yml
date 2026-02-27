@@ -14,14 +14,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build Swift package
-        run: |
-          cd swift_lib
-          swift build
+        run: swift build
 
       - name: Test Swift package
-        run: |
-          cd swift_lib
-          swift test
+        run: swift test
 
   # ── Job 2: Create GitHub Release ───────────────────────────────────────────
   release:

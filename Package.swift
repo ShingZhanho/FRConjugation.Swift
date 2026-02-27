@@ -21,12 +21,9 @@ let package = Package(
                 .copy("Resources")
             ]
         ),
-        .target(
-            name: "CFRConjugation",
-            path: "swift_lib/Sources/CFRConjugation"
-        ),
         .testTarget(
             name: "FRConjugationTests",
+            dependencies: ["FRConjugation"],
             path: "swift_lib/Tests/FRConjugationTests"
         )
     ]

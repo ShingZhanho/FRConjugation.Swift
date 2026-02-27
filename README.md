@@ -182,26 +182,14 @@ That's it — no LibTorch, no C library, no linker flags.
 │   └── Tests/
 │       └── FRConjugationTests/      15 unit tests
 │
-├── python_model/                    ML model training & Python API
-│   ├── french_conjugation_model.py  Python conjugation module
-│   ├── train_model.py               Training script
-│   ├── build_final_model.py         Exception-table builder
-│   ├── export_weights.py            Export to portable format
-│   ├── test_model.py                31 unit tests
-│   ├── full_test_model.py           Full-DB validation (390,546 forms)
-│   └── README.md                    Python component docs
-│
-├── c_wrapper/                       C/C++ library (LibTorch runtime, legacy)
-│   ├── conjugation.{h,cpp}          C API
-│   ├── CMakeLists.txt               CMake build
-│   ├── export_model.py              PyTorch → traced components
-│   └── README.md                    C component docs
-│
-├── objc_wrapper/                    Objective-C wrapper (legacy)
-│   └── README.md
-│
-└── swift_wrapper/                   Legacy string-based Swift wrapper
-    └── README.md
+└── python_model/                    ML model training & Python API
+    ├── french_conjugation_model.py  Python conjugation module
+    ├── train_model.py               Training script
+    ├── build_final_model.py         Exception-table builder
+    ├── export_weights.py            Export to portable format
+    ├── test_model.py                31 unit tests
+    ├── full_test_model.py           Full-DB validation (390,546 forms)
+    └── README.md                    Python component docs
 ```
 
 > Model files (`*.pt`), `verbs.db`, and build artefacts are git-ignored.

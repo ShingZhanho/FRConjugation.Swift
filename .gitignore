@@ -18,9 +18,7 @@ dist/
 *.swo
 *~
 
-# ── C / CMake build artifacts ──────────────────────────
-c_wrapper/build/
-c_wrapper/json.hpp
+# ── Build artifacts ────────────────────────────────────
 *.o
 *.a
 *.dylib
@@ -31,11 +29,14 @@ c_wrapper/json.hpp
 .swiftpm/
 Package.resolved
 
+# ── Xcode ─────────────────────────────────────────────
+xcuserdata/
+*.xcscmblueprint
+DerivedData/
+
 # ── Large binary files (use Git LFS or download separately) ──
 # PyTorch model checkpoints
 python_model/*.pt
-# Traced LibTorch model components
-c_wrapper/*.pt
 # SQLite database (213 MB — too large for git)
 python_model/verbs.db
 

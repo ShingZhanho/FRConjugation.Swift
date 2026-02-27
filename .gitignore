@@ -1,0 +1,40 @@
+# ── Python ─────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+*.egg
+
+# ── macOS ──────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ── IDE / Editor ───────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── C / CMake build artifacts ──────────────────────────
+c_wrapper/build/
+c_wrapper/json.hpp
+*.o
+*.a
+*.dylib
+*.so
+
+# ── Large binary files (use Git LFS or download separately) ──
+# PyTorch model checkpoints
+python_model/*.pt
+# Traced LibTorch model components
+c_wrapper/*.pt
+# SQLite database (213 MB — too large for git)
+python_model/verbs.db
+
+# ── Temporary / generated ─────────────────────────────
+*.log
+full_test_errors.json
+training_log.txt

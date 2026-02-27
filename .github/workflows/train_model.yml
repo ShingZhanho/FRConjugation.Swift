@@ -1,0 +1,87 @@
+name: Train Model
+
+on:
+  workflow_dispatch:
+
+jobs:
+  # ── Job 1: Train the Python model ──────────────────────────────────────────
+  train-model:
+    name: Train Python Model
+    runs-on: ubuntu-latest
+    env:
+      GH_ACTIONS: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Download verbs.db
+        run: |
+          LATEST=$(curl -s https://api.github.com/repos/ShingZhanho/verbe-conjugaison-academie-francaise/releases/latest \
+            | python3 -c "import sys,json; r=json.load(sys.stdin); print(next(a['browser_download_url'] for a in r['assets'] if a['name']=='verbs.db'))")
+          curl -L "$LATEST" -o python_model/verbs.db
+
+      - name: Train model
+        run: |
+          cd python_model
+          python3 train_model.py
+
+      - name: Run full test & build final model
+        run: |
+          cd python_model
+          python3 full_test_model.py
+          python3 build_final_model.py
+
+      - name: Run unit tests
+        run: |
+          cd python_model
+          python3 test_model.py
+
+      - name: Upload model checkpoints
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-model
+          path: |
+            python_model/conjugation_model.pt
+            python_model/conjugation_model_final.pt
+          retention-days: 30
+
+  # ── Job 2: Export weights to portable format ───────────────────────────────
+  export-weights:
+    name: Export Model Weights
+    runs-on: ubuntu-latest
+    needs: train-model
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install torch numpy --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Download model checkpoints
+        uses: actions/download-artifact@v4
+        with:
+          name: python-model
+          path: python_model/
+
+      - name: Export weights
+        run: python3 python_model/export_weights.py python_model/conjugation_model_final.pt swift_lib/Sources/FRConjugation/Resources
+
+      - name: Upload exported weights
+        uses: actions/upload-artifact@v4
+        with:
+          name: exported-weights
+          path: |
+            swift_lib/Sources/FRConjugation/Resources/model.json
+            swift_lib/Sources/FRConjugation/Resources/weights.bin
+          retention-days: 30

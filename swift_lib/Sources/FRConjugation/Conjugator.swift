@@ -1,6 +1,5 @@
 // Conjugator.swift — Idiomatic Swift interface to the French verb conjugation model.
 
-import CFRConjugation
 import Foundation
 
 /// A French verb conjugation engine backed by a character-level seq2seq
@@ -38,33 +37,56 @@ import Foundation
 ///
 /// ## Model Directory
 ///
-/// The directory must contain the files exported by `c_wrapper/export_model.py`:
-/// - `conjugation_encoder.pt`
-/// - `conjugation_bridge.pt`
-/// - `conjugation_attention.pt`
-/// - `conjugation_decoder.pt`
-/// - `conjugation_meta.json`
+/// The directory must contain the files exported by `export_weights.py`:
+/// - `model.json`  — vocabulary, metadata, weight manifest
+/// - `weights.bin` — raw float32 weight data
 public final class Conjugator {
 
     // MARK: - Private State
 
-    private let handle: OpaquePointer
+    private let engine: InferenceEngine
 
-    /// Internal buffer size for C function output.
-    private static let bufferSize = 512
+    // MARK: - Linguistic Constants
+
+    /// Simple tenses that the model predicts directly.
+    private static let simpleTenses: Set<String> = [
+        "indicatif|present", "indicatif|imparfait",
+        "indicatif|passe_simple", "indicatif|futur_simple",
+        "conditionnel|present",
+        "subjonctif|present", "subjonctif|imparfait",
+        "imperatif|present",
+    ]
+
+    /// Compound tense → (aux mode, aux tense) mapping.
+    private static let compoundTenseMap: [String: (String, String)] = [
+        "indicatif|passe_compose": ("indicatif", "present"),
+        "indicatif|plus_que_parfait": ("indicatif", "imparfait"),
+        "indicatif|passe_anterieur": ("indicatif", "passe_simple"),
+        "indicatif|futur_anterieur": ("indicatif", "futur_simple"),
+        "conditionnel|passe": ("conditionnel", "present"),
+        "subjonctif|passe": ("subjonctif", "present"),
+        "subjonctif|plus_que_parfait": ("subjonctif", "imparfait"),
+        "imperatif|passe": ("imperatif", "present"),
+    ]
+
+    /// Person → participle form mapping for être-auxiliary agreement.
+    private static let ppFormeEtre: [String: String] = [
+        "1s": "passe_sm", "2s": "passe_sm",
+        "3sm": "passe_sm", "3sf": "passe_sf",
+        "1p": "passe_pm", "2p": "passe_pm",
+        "3pm": "passe_pm", "3pf": "passe_pf",
+    ]
 
     // MARK: - Initialization
 
     /// Load the conjugation model from a directory path.
     ///
-    /// - Parameter path: Absolute path to the directory containing the
-    ///   exported model files.
+    /// - Parameter path: Absolute path to the directory containing
+    ///   `model.json` and `weights.bin`.
     /// - Throws: ``ConjugationError/modelLoadFailed(path:)`` if loading fails.
     public init(modelDirectory path: String) throws {
-        guard let h = fr_conjugation_load(path) else {
-            throw ConjugationError.modelLoadFailed(path: path)
-        }
-        self.handle = h
+        let url = URL(fileURLWithPath: path, isDirectory: true)
+        self.engine = try InferenceEngine(modelDirectory: url)
     }
 
     /// Load the conjugation model from a directory URL.
@@ -75,15 +97,11 @@ public final class Conjugator {
         try self.init(modelDirectory: url.path)
     }
 
-    deinit {
-        fr_conjugation_free(handle)
-    }
-
     // MARK: - Properties
 
     /// The number of verbs the model recognises.
     public var verbCount: Int {
-        Int(fr_conjugation_verb_count(handle))
+        engine.knownVerbs.count
     }
 
     // MARK: - Queries
@@ -93,7 +111,7 @@ public final class Conjugator {
     ///     conjugator.hasVerb("parler")  // true
     ///     conjugator.hasVerb("xyzzy")   // false
     public func hasVerb(_ infinitive: String) -> Bool {
-        fr_conjugation_has_verb(handle, infinitive)
+        engine.knownVerbs.contains(infinitive)
     }
 
     /// Whether a verb beginning with *h* is h-aspiré (no elision/liaison).
@@ -101,7 +119,7 @@ public final class Conjugator {
     ///     conjugator.isHAspire("haïr")    // true
     ///     conjugator.isHAspire("habiter")  // false
     public func isHAspire(_ infinitive: String) -> Bool {
-        fr_conjugation_is_h_aspire(handle, infinitive)
+        engine.hAspire.contains(infinitive)
     }
 
     /// Auxiliary verb information for compound tenses.
@@ -109,19 +127,11 @@ public final class Conjugator {
     ///     let aux = conjugator.auxiliary(for: "aller")
     ///     // Auxiliary(avoir: false, etre: true, pronominal: true)
     public func auxiliary(for infinitive: String) -> Auxiliary {
-        var buf = [CChar](repeating: 0, count: Self.bufferSize)
-        let n = fr_conjugation_auxiliary(handle, infinitive, &buf, buf.count)
-        guard n >= 0 else {
-            return Auxiliary(avoir: false, etre: false, pronominal: false)
-        }
-        let raw = String(cString: buf).lowercased()
-        let parts = Set(raw.split(separator: ",").map {
-            $0.trimmingCharacters(in: .whitespaces)
-        })
+        let usesEtre = engine.etreVerbs.contains(infinitive)
         return Auxiliary(
-            avoir: parts.contains("avoir"),
-            etre: parts.contains("être") || parts.contains("etre"),
-            pronominal: parts.contains("pronominal")
+            avoir: !usesEtre,
+            etre: usesEtre,
+            pronominal: engine.pronoVerbs.contains(infinitive)
         )
     }
 
@@ -141,14 +151,7 @@ public final class Conjugator {
         tense: Tense,
         person: Person
     ) -> String? {
-        var buf = [CChar](repeating: 0, count: Self.bufferSize)
-        let n = fr_conjugation_conjugate(
-            handle, infinitive,
-            mode.rawValue, tense.rawValue, person.rawValue,
-            &buf, buf.count
-        )
-        guard n >= 0 else { return nil }
-        return String(cString: buf)
+        singleForm(infinitive, mode: mode.rawValue, tense: tense.rawValue, person: person.rawValue)
     }
 
     /// Conjugate all persons for a given mode and tense.
@@ -183,8 +186,8 @@ public final class Conjugator {
 
     /// Get a participle form.
     ///
-    ///     conjugator.participle("partir")
-    ///     // → "parti" (default: passé masculin singulier)
+    ///     conjugator.participle("parler")
+    ///     // → "parlé" (default: passé masculin singulier)
     ///
     ///     conjugator.participle("partir", form: .passeFemininPlural)
     ///     // → "parties"
@@ -197,11 +200,70 @@ public final class Conjugator {
         _ infinitive: String,
         form: ParticipleForm = .passeMasculinSingular
     ) -> String? {
-        var buf = [CChar](repeating: 0, count: Self.bufferSize)
-        let n = fr_conjugation_get_participle(
-            handle, infinitive, form.rawValue, &buf, buf.count
-        )
-        guard n >= 0 else { return nil }
-        return String(cString: buf)
+        getParticiple(infinitive, forme: form.rawValue)
+    }
+
+    // MARK: - Private Helpers
+
+    /// Direct neural prediction wrapper.
+    private func predict(_ infinitive: String, mode: String, tense: String, person: String) -> String? {
+        engine.predict(infinitive: infinitive, mode: mode, tense: tense, person: person)
+    }
+
+    /// Retrieve a participle form, redirecting invariable PP verbs.
+    private func getParticiple(_ infinitive: String, forme: String) -> String? {
+        var f = forme
+        if f == "passe_sf" || f == "passe_pm" || f == "passe_pf" {
+            if engine.invariablePPVerbs.contains(infinitive) {
+                f = "passe_sm"
+            }
+        }
+        return predict(infinitive, mode: "participe", tense: f, person: "-")
+    }
+
+    /// Route a single form through simple/compound/participle logic.
+    private func singleForm(_ infinitive: String, mode: String, tense: String, person: String) -> String? {
+        if mode == "participe" {
+            return getParticiple(infinitive, forme: tense)
+        }
+
+        let key = "\(mode)|\(tense)"
+
+        if Self.simpleTenses.contains(key) {
+            return predict(infinitive, mode: mode, tense: tense, person: person)
+        }
+
+        if let (auxMode, auxTense) = Self.compoundTenseMap[key] {
+            return conjugateCompound(
+                infinitive, mode: mode,
+                auxMode: auxMode, auxTense: auxTense, person: person
+            )
+        }
+
+        return nil
+    }
+
+    /// Build a compound tense: aux conjugation + past participle.
+    private func conjugateCompound(
+        _ infinitive: String,
+        mode: String,
+        auxMode: String,
+        auxTense: String,
+        person: String
+    ) -> String? {
+        let auxVerb = engine.etreVerbs.contains(infinitive) ? "être" : "avoir"
+        guard let auxForm = predict(auxVerb, mode: auxMode, tense: auxTense, person: person) else {
+            return nil
+        }
+        let ppForme: String
+        if auxVerb == "être" {
+            ppForme = Self.ppFormeEtre[person] ?? "passe_sm"
+        } else {
+            ppForme = "passe_sm"
+        }
+        guard let pp = getParticiple(infinitive, forme: ppForme) else {
+            return nil
+        }
+        return "\(auxForm) \(pp)"
     }
 }

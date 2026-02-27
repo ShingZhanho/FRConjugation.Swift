@@ -58,7 +58,7 @@ Add the package dependency in your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/ShingZhanho/FRConjugation.Swift.git", from: "1.0.0"),
+    .package(url: "https://github.com/ShingZhanho/FRConjugation.Swift.git", from: "2.0.0"),
 ]
 ```
 

@@ -100,17 +100,27 @@ public final class Conjugator {
     /// Load the conjugation model from the bundled resources.
     ///
     /// This initializer uses the `model.json` and `weights.bin` files
-    /// that are embedded in the Swift package resources.
+    /// that are embedded in the Swift package / framework resources.
     ///
     /// - Throws: ``ConjugationError/modelLoadFailed(path:)`` if the
     ///   bundled resources cannot be found.
     public convenience init() throws {
-        guard let jsonURL = Bundle.module.url(forResource: "model", withExtension: "json"),
-              let _ = Bundle.module.url(forResource: "weights", withExtension: "bin") else {
-            throw ConjugationError.modelLoadFailed(path: "Bundle.module")
+        let bundle = Self.resourceBundle
+        guard let jsonURL = bundle.url(forResource: "model", withExtension: "json"),
+              let _ = bundle.url(forResource: "weights", withExtension: "bin") else {
+            throw ConjugationError.modelLoadFailed(path: "bundled resources")
         }
         let dir = jsonURL.deletingLastPathComponent()
         try self.init(modelDirectory: dir)
+    }
+
+    /// Locate the resource bundle for both SPM and Xcode framework builds.
+    private static var resourceBundle: Bundle {
+        #if SWIFT_PACKAGE
+        return Bundle.module
+        #else
+        return Bundle(for: Conjugator.self)
+        #endif
     }
 
     // MARK: - Properties

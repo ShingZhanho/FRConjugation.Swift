@@ -1,33 +1,31 @@
 // ConjugationTests.swift — Unit tests for the FRConjugation Swift library.
 //
-// These tests require a built libfrconjugation and exported model files.
-// Set the MODEL_DIR environment variable to the directory containing
-// the exported model files, or place them in c_wrapper/ relative to
-// the repo root.
+// The model is now bundled as Swift package resources (model.json + weights.bin).
+// No external model directory or C library required.
 //
-// Run:
-//   swift test -Xlinker -L/path/to/libfrconjugation \
-//              -Xlinker -rpath -Xlinker /path/to/libfrconjugation
+// Run:  cd swift_lib && swift test
 
 import XCTest
 @testable import FRConjugation
 
 final class ConjugationTests: XCTestCase {
 
-    /// Resolve model directory from environment or default repo layout.
+    /// Resolve model directory: environment override or Resources/ via #filePath.
     static var modelDir: String? {
         if let env = ProcessInfo.processInfo.environment["MODEL_DIR"] {
             return env
         }
-        // Default: assume running from swift_lib/ with sibling c_wrapper/
+        // Walk from #filePath → Sources/FRConjugation/Resources/
         let swiftLib = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()  // FRConjugationTests/
             .deletingLastPathComponent()  // Tests/
             .deletingLastPathComponent()  // swift_lib/
-        let repoRoot = swiftLib.deletingLastPathComponent()  // repo root
-        let candidate = repoRoot.appendingPathComponent("c_wrapper").path
-        if FileManager.default.fileExists(atPath: candidate + "/conjugation_meta.json") {
-            return candidate
+        let candidate = swiftLib
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FRConjugation")
+            .appendingPathComponent("Resources")
+        if FileManager.default.fileExists(atPath: candidate.appendingPathComponent("model.json").path) {
+            return candidate.path
         }
         return nil
     }
@@ -36,8 +34,15 @@ final class ConjugationTests: XCTestCase {
 
     override class func setUp() {
         super.setUp()
+        // Try bundled resources first, fall back to file path
+        do {
+            conjugator = try Conjugator()
+            return
+        } catch {
+            // Bundle.module may not work during development builds — fall back
+        }
         guard let dir = modelDir else {
-            print("⚠️  MODEL_DIR not set and c_wrapper/ not found — skipping tests")
+            print("⚠️  Could not find model files — skipping tests")
             return
         }
         do {
@@ -50,7 +55,7 @@ final class ConjugationTests: XCTestCase {
     private var c: Conjugator {
         get throws {
             guard let conj = Self.conjugator else {
-                throw XCTSkip("Model not available — set MODEL_DIR env var")
+                throw XCTSkip("Model not available")
             }
             return conj
         }

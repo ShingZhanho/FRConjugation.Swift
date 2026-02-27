@@ -97,6 +97,22 @@ public final class Conjugator {
         try self.init(modelDirectory: url.path)
     }
 
+    /// Load the conjugation model from the bundled resources.
+    ///
+    /// This initializer uses the `model.json` and `weights.bin` files
+    /// that are embedded in the Swift package resources.
+    ///
+    /// - Throws: ``ConjugationError/modelLoadFailed(path:)`` if the
+    ///   bundled resources cannot be found.
+    public convenience init() throws {
+        guard let jsonURL = Bundle.module.url(forResource: "model", withExtension: "json"),
+              let _ = Bundle.module.url(forResource: "weights", withExtension: "bin") else {
+            throw ConjugationError.modelLoadFailed(path: "Bundle.module")
+        }
+        let dir = jsonURL.deletingLastPathComponent()
+        try self.init(modelDirectory: dir)
+    }
+
     // MARK: - Properties
 
     /// The number of verbs the model recognises.

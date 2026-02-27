@@ -21,6 +21,12 @@ struct Tensor {
 
     // MARK: - Initializers
 
+    /// Create a tensor with the given data and shape.
+    init(data: [Float], shape: [Int]) {
+        self.data = data
+        self.shape = shape
+    }
+
     /// Create a tensor filled with zeros.
     static func zeros(_ shape: [Int]) -> Tensor {
         let n = shape.reduce(1, *)

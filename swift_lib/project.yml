@@ -1,0 +1,57 @@
+name: FRConjugation
+options:
+  bundleIdPrefix: com.shingjacob
+  deploymentTarget:
+    macOS: "12.0"
+    iOS: "15.0"
+  createIntermediateGroups: true
+  xcodeVersion: "16.0"
+  generateEmptyDirectories: false
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    PRODUCT_NAME: FRConjugation
+
+targets:
+  FRConjugation:
+    type: framework
+    platform: macOS
+    sources:
+      - path: Sources/FRConjugation
+        excludes:
+          - Resources
+    resources:
+      - path: Sources/FRConjugation/Resources
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.shingjacob.FRConjugation
+        INFOPLIST_FILE: ""
+        GENERATE_INFOPLIST_FILE: "YES"
+        DEFINES_MODULE: "YES"
+        PRODUCT_MODULE_NAME: FRConjugation
+    frameworks:
+      - sdk: Accelerate.framework
+
+  FRConjugationTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/FRConjugationTests
+    dependencies:
+      - target: FRConjugation
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.shingjacob.FRConjugationTests
+        PRODUCT_MODULE_NAME: FRConjugationTests
+        GENERATE_INFOPLIST_FILE: "YES"
+
+schemes:
+  FRConjugation:
+    build:
+      targets:
+        FRConjugation: all
+    test:
+      targets:
+        - FRConjugationTests

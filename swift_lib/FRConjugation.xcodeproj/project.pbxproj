@@ -1,0 +1,460 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		14DD2086BF1FF2BAF670E24D /* Types.swift in Sources */ = {isa = PBXBuildFile; fileRef = 662B4FA876A92F1A07EAC94D /* Types.swift */; };
+		4891B5156EC17EAE606F7073 /* FRConjugation.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CBD368BBACBFCB16E6296064 /* FRConjugation.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		6EA9C07EEEB3C0446D2EBF42 /* FRConjugation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CBD368BBACBFCB16E6296064 /* FRConjugation.framework */; };
+		82B574F4A0DAF1B6937D7D6E /* Layers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 577AC89B155E4AD5AEB0E238 /* Layers.swift */; };
+		A510ACEDE87466F53E1202CF /* Tensor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B62CAA213878B591C728DAE0 /* Tensor.swift */; };
+		BBD266035985D35FA76DE843 /* ConjugationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E24D6AEC093CB25127ACF16 /* ConjugationTests.swift */; };
+		D0AA2BD3A95EFD1C2FD680EB /* Conjugator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 630A25115C42A06EBDF9B964 /* Conjugator.swift */; };
+		E37ABFB2B33D855EE0291F16 /* InferenceEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCBF7CEF613753225838B6FC /* InferenceEngine.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		E89AE3E4DAA57B662CCF461F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 2F36AFD704D74BAD7375C6A6 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 1CEF0140B949287D46AA3472;
+			remoteInfo = FRConjugation;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		65AA46B1D05C18E77BA7D9F8 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				4891B5156EC17EAE606F7073 /* FRConjugation.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		2E24D6AEC093CB25127ACF16 /* ConjugationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConjugationTests.swift; sourceTree = "<group>"; };
+		577AC89B155E4AD5AEB0E238 /* Layers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Layers.swift; sourceTree = "<group>"; };
+		630A25115C42A06EBDF9B964 /* Conjugator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Conjugator.swift; sourceTree = "<group>"; };
+		662B4FA876A92F1A07EAC94D /* Types.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Types.swift; sourceTree = "<group>"; };
+		B62CAA213878B591C728DAE0 /* Tensor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tensor.swift; sourceTree = "<group>"; };
+		BCBF7CEF613753225838B6FC /* InferenceEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InferenceEngine.swift; sourceTree = "<group>"; };
+		CBD368BBACBFCB16E6296064 /* FRConjugation.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = FRConjugation.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		EC6FF74BF25B80951A77CFA4 /* FRConjugationTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FRConjugationTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		078DD0AED1DFCF3DD070EFFA /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6EA9C07EEEB3C0446D2EBF42 /* FRConjugation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0D1508D6C389510E7EA2A930 = {
+			isa = PBXGroup;
+			children = (
+				58327673C8D0821D6A8D3049 /* Sources */,
+				F4008A1ACB18CE1C595680DD /* Tests */,
+				0E76EECA9EA079E484ACE57A /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		0E76EECA9EA079E484ACE57A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				CBD368BBACBFCB16E6296064 /* FRConjugation.framework */,
+				EC6FF74BF25B80951A77CFA4 /* FRConjugationTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		232BCE1FEF3E07113CAF9D27 /* FRConjugationTests */ = {
+			isa = PBXGroup;
+			children = (
+				2E24D6AEC093CB25127ACF16 /* ConjugationTests.swift */,
+			);
+			path = FRConjugationTests;
+			sourceTree = "<group>";
+		};
+		58327673C8D0821D6A8D3049 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				E246AC32CC1CA8D4AE16B99D /* FRConjugation */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		E246AC32CC1CA8D4AE16B99D /* FRConjugation */ = {
+			isa = PBXGroup;
+			children = (
+				630A25115C42A06EBDF9B964 /* Conjugator.swift */,
+				BCBF7CEF613753225838B6FC /* InferenceEngine.swift */,
+				577AC89B155E4AD5AEB0E238 /* Layers.swift */,
+				B62CAA213878B591C728DAE0 /* Tensor.swift */,
+				662B4FA876A92F1A07EAC94D /* Types.swift */,
+			);
+			path = FRConjugation;
+			sourceTree = "<group>";
+		};
+		F4008A1ACB18CE1C595680DD /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				232BCE1FEF3E07113CAF9D27 /* FRConjugationTests */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		1CEF0140B949287D46AA3472 /* FRConjugation */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3F107728B9F05FC8EF32AFFD /* Build configuration list for PBXNativeTarget "FRConjugation" */;
+			buildPhases = (
+				5A50901C2F214C01F256A88E /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = FRConjugation;
+			packageProductDependencies = (
+			);
+			productName = FRConjugation;
+			productReference = CBD368BBACBFCB16E6296064 /* FRConjugation.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+		9986C3ED8254AA7E1D06A24A /* FRConjugationTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 82EB1DE259404CBB3468B19D /* Build configuration list for PBXNativeTarget "FRConjugationTests" */;
+			buildPhases = (
+				5EEAB2478EF3E801954A32BD /* Sources */,
+				078DD0AED1DFCF3DD070EFFA /* Frameworks */,
+				65AA46B1D05C18E77BA7D9F8 /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				56EFE48FE51181DF092CD3BA /* PBXTargetDependency */,
+			);
+			name = FRConjugationTests;
+			packageProductDependencies = (
+			);
+			productName = FRConjugationTests;
+			productReference = EC6FF74BF25B80951A77CFA4 /* FRConjugationTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		2F36AFD704D74BAD7375C6A6 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1600;
+			};
+			buildConfigurationList = 9053E6CB4C2E7D1A2BA48EA8 /* Build configuration list for PBXProject "FRConjugation" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 0D1508D6C389510E7EA2A930;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				1CEF0140B949287D46AA3472 /* FRConjugation */,
+				9986C3ED8254AA7E1D06A24A /* FRConjugationTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		5A50901C2F214C01F256A88E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D0AA2BD3A95EFD1C2FD680EB /* Conjugator.swift in Sources */,
+				E37ABFB2B33D855EE0291F16 /* InferenceEngine.swift in Sources */,
+				82B574F4A0DAF1B6937D7D6E /* Layers.swift in Sources */,
+				A510ACEDE87466F53E1202CF /* Tensor.swift in Sources */,
+				14DD2086BF1FF2BAF670E24D /* Types.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5EEAB2478EF3E801954A32BD /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BBD266035985D35FA76DE843 /* ConjugationTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		56EFE48FE51181DF092CD3BA /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 1CEF0140B949287D46AA3472 /* FRConjugation */;
+			targetProxy = E89AE3E4DAA57B662CCF461F /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		4D43CABD05725FA71A4292B1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = FRConjugation;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+		541C07731CAC1FB327DE88AB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.shingjacob.FRConjugationTests;
+				PRODUCT_MODULE_NAME = FRConjugationTests;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		641FC8B8FE043C9A7800C03D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.shingjacob.FRConjugation;
+				PRODUCT_MODULE_NAME = FRConjugation;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Debug;
+		};
+		6B07D357A139BB0FD6D70690 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = FRConjugation;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		725C2D4DCDCE70C2BADA95E1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.shingjacob.FRConjugation;
+				PRODUCT_MODULE_NAME = FRConjugation;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Release;
+		};
+		A4163D55040C9CF71837236C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.shingjacob.FRConjugationTests;
+				PRODUCT_MODULE_NAME = FRConjugationTests;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		3F107728B9F05FC8EF32AFFD /* Build configuration list for PBXNativeTarget "FRConjugation" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				641FC8B8FE043C9A7800C03D /* Debug */,
+				725C2D4DCDCE70C2BADA95E1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		82EB1DE259404CBB3468B19D /* Build configuration list for PBXNativeTarget "FRConjugationTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A4163D55040C9CF71837236C /* Debug */,
+				541C07731CAC1FB327DE88AB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		9053E6CB4C2E7D1A2BA48EA8 /* Build configuration list for PBXProject "FRConjugation" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6B07D357A139BB0FD6D70690 /* Debug */,
+				4D43CABD05725FA71A4292B1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 2F36AFD704D74BAD7375C6A6 /* Project object */;
+}

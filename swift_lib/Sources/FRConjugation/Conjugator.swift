@@ -48,6 +48,12 @@ public final class Conjugator {
 
     // MARK: - Linguistic Constants
 
+    /// Persons valid for impersonal verbs (il/elle only).
+    private static let impersonalPersons: Set<String> = ["3sm", "3sf"]
+
+    /// Persons valid for third-person-only verbs (il/elle/ils/elles).
+    private static let thirdPersonOnlyPersons: Set<String> = ["3sm", "3sf", "3pm", "3pf"]
+
     /// Simple tenses that the model predicts directly.
     private static let simpleTenses: Set<String> = [
         "indicatif|present", "indicatif|imparfait",
@@ -146,6 +152,40 @@ public final class Conjugator {
     ///     conjugator.isHAspire("habiter")  // false
     public func isHAspire(_ infinitive: String) -> Bool {
         engine.hAspire.contains(infinitive)
+    }
+
+    /// Whether a verb is impersonal (only conjugates for il/elle).
+    ///
+    /// Impersonal verbs like *falloir* and weather verbs (*neiger*, *bruiner*, …)
+    /// only have third-person singular forms.
+    ///
+    ///     conjugator.isImpersonal("falloir")  // true
+    ///     conjugator.isImpersonal("neiger")   // true
+    ///     conjugator.isImpersonal("pleuvoir") // false  (has plural forms too)
+    ///     conjugator.isImpersonal("parler")   // false
+    public func isImpersonal(_ infinitive: String) -> Bool {
+        engine.impersonalVerbs.contains(infinitive)
+    }
+
+    /// Whether a verb only conjugates in the third person (il/elle/ils/elles).
+    ///
+    /// Some verbs like *pleuvoir* (figurative: "les coups pleuvent") and
+    /// *advenir* accept both singular and plural third-person subjects but
+    /// no first- or second-person forms.
+    ///
+    ///     conjugator.isThirdPersonOnly("pleuvoir") // true
+    ///     conjugator.isThirdPersonOnly("advenir")  // true
+    ///     conjugator.isThirdPersonOnly("falloir")  // false  (use isImpersonal)
+    ///     conjugator.isThirdPersonOnly("parler")   // false
+    public func isThirdPersonOnly(_ infinitive: String) -> Bool {
+        engine.thirdPersonOnlyVerbs.contains(infinitive)
+    }
+
+    /// Whether a verb is defective — either impersonal or third-person-only.
+    ///
+    /// This is the union of ``isImpersonal(_:)`` and ``isThirdPersonOnly(_:)``.
+    public func isDefective(_ infinitive: String) -> Bool {
+        isImpersonal(infinitive) || isThirdPersonOnly(infinitive)
     }
 
     /// Auxiliary verb information for compound tenses.
@@ -247,10 +287,26 @@ public final class Conjugator {
         return predict(infinitive, mode: "participe", tense: f, person: "-")
     }
 
+    /// Check whether the person is valid for this verb (impersonal / defective filtering).
+    private func isPersonAllowed(_ infinitive: String, person: String) -> Bool {
+        if engine.impersonalVerbs.contains(infinitive) {
+            return Self.impersonalPersons.contains(person)
+        }
+        if engine.thirdPersonOnlyVerbs.contains(infinitive) {
+            return Self.thirdPersonOnlyPersons.contains(person)
+        }
+        return true
+    }
+
     /// Route a single form through simple/compound/participle logic.
     private func singleForm(_ infinitive: String, mode: String, tense: String, person: String) -> String? {
         if mode == "participe" {
             return getParticiple(infinitive, forme: tense)
+        }
+
+        // Block invalid persons for impersonal / defective verbs
+        guard isPersonAllowed(infinitive, person: person) else {
+            return nil
         }
 
         let key = "\(mode)|\(tense)"

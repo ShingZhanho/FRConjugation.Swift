@@ -34,6 +34,8 @@ final class InferenceEngine {
     let hAspire: Set<String>
     let knownVerbs: Set<String>
     let invariablePPVerbs: Set<String>
+    let impersonalVerbs: Set<String>
+    let thirdPersonOnlyVerbs: Set<String>
 
     // ── Layers ───────────────────────────────────────────────────────────
 
@@ -100,6 +102,8 @@ final class InferenceEngine {
         self.hAspire = Set((root["h_aspire"] as? [String]) ?? [])
         self.knownVerbs = Set((root["known_verbs"] as? [String]) ?? [])
         self.invariablePPVerbs = Set((root["invariable_pp_verbs"] as? [String]) ?? [])
+        self.impersonalVerbs = Set((root["impersonal_verbs"] as? [String]) ?? [])
+        self.thirdPersonOnlyVerbs = Set((root["third_person_only_verbs"] as? [String]) ?? [])
 
         // ── Load binary weights ──────────────────────────────────────────
         let binData = try Data(contentsOf: binURL)

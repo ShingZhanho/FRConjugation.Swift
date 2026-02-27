@@ -169,6 +169,36 @@ def load_training_data():
     print(f"   Skipped {n_skipped_invariable} invariable PP agreement entries "
           f"({len(invariable_pp_verbs)} verbs)")
 
+    # ── Impersonal / defective verbs ──
+    # Some verbs only conjugate in 3rd person.  Identify them so the
+    # inference layer can suppress invalid person forms.
+    #   • impersonal_verbs        – only il/elle  (3sm, 3sf)
+    #   • third_person_only_verbs – only 3rd person (3sm, 3sf, 3pm, 3pf)
+    cur.execute(
+        """
+        SELECT v.infinitif,
+               MAX(CASE WHEN c.personne NOT IN ('3sm','3sf','3pm','3pf')
+                        THEN 1 ELSE 0 END) AS has_non_third,
+               MAX(CASE WHEN c.personne IN ('3pm','3pf')
+                        THEN 1 ELSE 0 END) AS has_plural
+        FROM conjugaisons c
+        JOIN verbes v ON c.verbe_id = v.id
+        WHERE c.voix IN ('voix_active_avoir','voix_active_etre')
+        GROUP BY v.infinitif
+        HAVING has_non_third = 0
+        ORDER BY v.infinitif
+        """
+    )
+    impersonal_verbs: list[str] = []       # il/elle only
+    third_person_only_verbs: list[str] = []  # il/elle/ils/elles
+    for inf_row, _, has_plural in cur.fetchall():
+        if has_plural:
+            third_person_only_verbs.append(inf_row)
+        else:
+            impersonal_verbs.append(inf_row)
+    print(f"   Impersonal verbs (il only): {len(impersonal_verbs)}")
+    print(f"   Third-person-only verbs   : {len(third_person_only_verbs)}")
+
     conn.close()
 
     # ── Oversample underrepresented verbs ──
@@ -199,7 +229,8 @@ def load_training_data():
           f"T3({OVERSAMPLE_TIER3}x)={len(tier3)} verbs")
     print(f"   After oversampling irregular verbs: {len(examples):,}")
 
-    return examples, sorted(etre_verbs), sorted(prono_verbs), sorted(h_aspire), invariable_pp_verbs
+    return (examples, sorted(etre_verbs), sorted(prono_verbs), sorted(h_aspire),
+            invariable_pp_verbs, impersonal_verbs, third_person_only_verbs)
 
 
 # ─── Vocabularies ─────────────────────────────────────────────────────────────
@@ -376,7 +407,8 @@ def train():
 
     # 1. Load data
     print("\n1. Loading data from verbs.db …")
-    examples, etre_verbs, prono_verbs, h_aspire, invariable_pp_verbs = load_training_data()
+    (examples, etre_verbs, prono_verbs, h_aspire,
+     invariable_pp_verbs, impersonal_verbs, third_person_only_verbs) = load_training_data()
     print(f"   Training examples (with oversampling): {len(examples):,}")
 
     # 2. Vocabularies (built from unique examples only)
@@ -552,6 +584,8 @@ def train():
         "h_aspire": h_aspire,
         "known_verbs": known_verbs,
         "invariable_pp_verbs": invariable_pp_verbs,
+        "impersonal_verbs": impersonal_verbs,
+        "third_person_only_verbs": third_person_only_verbs,
         "hyperparams": {
             "emb_dim": EMB_DIM,
             "hidden_dim": HIDDEN_DIM,

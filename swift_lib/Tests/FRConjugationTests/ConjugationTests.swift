@@ -197,6 +197,97 @@ final class ConjugationTests: XCTestCase {
         XCTAssertEqual(conj.participle("finir", form: .present), "finissant")
     }
 
+    // MARK: - Impersonal / Defective Verbs
+
+    func testImpersonalFlags() throws {
+        let conj = try c
+        XCTAssertTrue(conj.isImpersonal("falloir"))
+        XCTAssertTrue(conj.isImpersonal("neiger"))
+        XCTAssertFalse(conj.isImpersonal("pleuvoir"))  // pleuvoir is third-person-only
+        XCTAssertFalse(conj.isImpersonal("parler"))
+
+        XCTAssertTrue(conj.isThirdPersonOnly("pleuvoir"))
+        XCTAssertTrue(conj.isThirdPersonOnly("advenir"))
+        XCTAssertFalse(conj.isThirdPersonOnly("falloir"))
+        XCTAssertFalse(conj.isThirdPersonOnly("parler"))
+
+        XCTAssertTrue(conj.isDefective("falloir"))
+        XCTAssertTrue(conj.isDefective("pleuvoir"))
+        XCTAssertFalse(conj.isDefective("parler"))
+    }
+
+    func testFalloirOnlyIl() throws {
+        let conj = try c
+        // "falloir" should only conjugate for il/elle
+        XCTAssertNotNil(conj.conjugate("falloir", mode: .indicatif, tense: .present,
+                                        person: .thirdPersonMasculineSingular))
+        XCTAssertEqual(
+            conj.conjugate("falloir", mode: .indicatif, tense: .present,
+                           person: .thirdPersonMasculineSingular),
+            "faut"
+        )
+        // Other persons should return nil
+        XCTAssertNil(conj.conjugate("falloir", mode: .indicatif, tense: .present,
+                                     person: .firstPersonSingular))
+        XCTAssertNil(conj.conjugate("falloir", mode: .indicatif, tense: .present,
+                                     person: .secondPersonSingular))
+        XCTAssertNil(conj.conjugate("falloir", mode: .indicatif, tense: .present,
+                                     person: .firstPersonPlural))
+        XCTAssertNil(conj.conjugate("falloir", mode: .indicatif, tense: .present,
+                                     person: .secondPersonPlural))
+        XCTAssertNil(conj.conjugate("falloir", mode: .indicatif, tense: .present,
+                                     person: .thirdPersonMasculinePlural))
+
+        // Full paradigm should only have il/elle
+        let forms = conj.conjugate("falloir", mode: .indicatif, tense: .present)
+        XCTAssertEqual(forms.count, 2)  // 3sm + 3sf only
+        XCTAssertNotNil(forms[.thirdPersonMasculineSingular])
+        XCTAssertNotNil(forms[.thirdPersonFeminineSingular])
+        XCTAssertNil(forms[.firstPersonSingular])
+
+        // No impératif forms
+        let imperatifForms = conj.conjugate("falloir", mode: .imperatif, tense: .present)
+        XCTAssertTrue(imperatifForms.isEmpty)
+    }
+
+    func testPleuvoirThirdPersonOnly() throws {
+        let conj = try c
+        // "pleuvoir" should conjugate for 3rd person only (singular + plural)
+        XCTAssertNotNil(conj.conjugate("pleuvoir", mode: .indicatif, tense: .present,
+                                        person: .thirdPersonMasculineSingular))
+        XCTAssertNotNil(conj.conjugate("pleuvoir", mode: .indicatif, tense: .present,
+                                        person: .thirdPersonMasculinePlural))
+        // Non-3rd-person should return nil
+        XCTAssertNil(conj.conjugate("pleuvoir", mode: .indicatif, tense: .present,
+                                     person: .firstPersonSingular))
+        XCTAssertNil(conj.conjugate("pleuvoir", mode: .indicatif, tense: .present,
+                                     person: .secondPersonPlural))
+
+        // Full paradigm should only have 3rd-person entries
+        let forms = conj.conjugate("pleuvoir", mode: .indicatif, tense: .present)
+        XCTAssertEqual(forms.count, 4)  // 3sm, 3sf, 3pm, 3pf
+        XCTAssertNil(forms[.firstPersonSingular])
+        XCTAssertNil(forms[.secondPersonSingular])
+        XCTAssertNil(forms[.firstPersonPlural])
+        XCTAssertNil(forms[.secondPersonPlural])
+    }
+
+    func testImpersonalParticiplesStillWork() throws {
+        let conj = try c
+        // Participles should not be affected by impersonal filtering
+        let pp = conj.participle("falloir", form: .passeMasculinSingular)
+        XCTAssertEqual(pp, "fallu")
+    }
+
+    func testImpersonalCompoundTense() throws {
+        let conj = try c
+        // Compound tenses should also be filtered
+        XCTAssertNotNil(conj.conjugate("falloir", mode: .indicatif, tense: .passeCompose,
+                                        person: .thirdPersonMasculineSingular))
+        XCTAssertNil(conj.conjugate("falloir", mode: .indicatif, tense: .passeCompose,
+                                     person: .firstPersonSingular))
+    }
+
     // MARK: - Invalid Input
 
     func testUnknownVerb() throws {

@@ -75,6 +75,8 @@ def export(checkpoint_path: str, output_dir: str) -> None:
         "h_aspire": sorted(cp.get("h_aspire", [])),
         "known_verbs": sorted(cp.get("known_verbs", [])),
         "invariable_pp_verbs": sorted(cp.get("invariable_pp_verbs", [])),
+        "impersonal_verbs": sorted(cp.get("impersonal_verbs", [])),
+        "third_person_only_verbs": sorted(cp.get("third_person_only_verbs", [])),
         "weight_manifest": manifest,
     }
 

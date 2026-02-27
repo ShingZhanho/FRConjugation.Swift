@@ -6,101 +6,12 @@ on:
       - 'v*'
 
 jobs:
-  # ── Job 1: Train the Python model ──────────────────────────────────────────
-  train-model:
-    name: Train Python Model
-    runs-on: ubuntu-latest
-    env:
-      GH_ACTIONS: "1"
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
-
-      - name: Download verbs.db
-        run: |
-          LATEST=$(curl -s https://api.github.com/repos/ShingZhanho/verbe-conjugaison-academie-francaise/releases/latest \
-            | python3 -c "import sys,json; r=json.load(sys.stdin); print(next(a['browser_download_url'] for a in r['assets'] if a['name']=='verbs.db'))")
-          curl -L "$LATEST" -o python_model/verbs.db
-
-      - name: Train model
-        run: |
-          cd python_model
-          python3 train_model.py
-
-      - name: Run full test & build final model
-        run: |
-          cd python_model
-          python3 full_test_model.py
-          python3 build_final_model.py
-
-      - name: Run unit tests
-        run: |
-          cd python_model
-          python3 test_model.py
-
-      - name: Upload model artefacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: python-model
-          path: |
-            python_model/conjugation_model.pt
-            python_model/conjugation_model_final.pt
-          retention-days: 1
-
-  # ── Job 2: Export weights to portable format ───────────────────────────────
-  export-weights:
-    name: Export Model Weights
-    runs-on: ubuntu-latest
-    needs: train-model
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: pip install torch numpy --index-url https://download.pytorch.org/whl/cpu
-
-      - name: Download model artefacts
-        uses: actions/download-artifact@v4
-        with:
-          name: python-model
-          path: python_model/
-
-      - name: Export weights
-        run: python3 python_model/export_weights.py python_model/conjugation_model_final.pt swift_lib/Sources/FRConjugation/Resources
-
-      - name: Upload exported weights
-        uses: actions/upload-artifact@v4
-        with:
-          name: exported-weights
-          path: |
-            swift_lib/Sources/FRConjugation/Resources/model.json
-            swift_lib/Sources/FRConjugation/Resources/weights.bin
-          retention-days: 1
-
-  # ── Job 3: Build & test the Swift package ──────────────────────────────────
-  build-swift-package:
+  # ── Job 1: Build & test the Swift package ──────────────────────────────────
+  build-and-test:
     name: Build & Test Swift Package
     runs-on: macos-14
-    needs: export-weights
     steps:
       - uses: actions/checkout@v4
-
-      - name: Download exported weights
-        uses: actions/download-artifact@v4
-        with:
-          name: exported-weights
-          path: swift_lib/Sources/FRConjugation/Resources/
 
       - name: Build Swift package
         run: |
@@ -112,32 +23,21 @@ jobs:
           cd swift_lib
           swift test
 
-  # ── Job 4: Create GitHub Release ──────────────────────────────────────────
+  # ── Job 2: Create GitHub Release ───────────────────────────────────────────
   release:
     name: Publish Release
     runs-on: ubuntu-latest
-    needs: [train-model, export-weights, build-swift-package]
+    needs: build-and-test
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download all artefacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artefacts/
-
       - name: Package release assets
         run: |
           mkdir -p release
-
-          # Python model checkpoints
-          cp artefacts/python-model/python_model/conjugation_model_final.pt release/
-          cp artefacts/python-model/python_model/conjugation_model.pt release/
-
-          # Portable model weights (model.json + weights.bin)
           tar czf release/model-weights.tar.gz \
-            -C artefacts/exported-weights/swift_lib/Sources/FRConjugation/Resources \
+            -C swift_lib/Sources/FRConjugation/Resources \
             model.json weights.bin
 
       - name: Create release
@@ -145,6 +45,4 @@ jobs:
         with:
           generate_release_notes: true
           files: |
-            release/conjugation_model_final.pt
-            release/conjugation_model.pt
             release/model-weights.tar.gz

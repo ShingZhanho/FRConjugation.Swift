@@ -13,6 +13,8 @@ jobs:
   train-model:
     name: Train Python Model
     runs-on: ubuntu-latest
+    env:
+      GH_ACTIONS: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -22,9 +24,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: |
-            pip install torch --index-url https://download.pytorch.org/whl/cpu
-            pip install tqdm
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
 
       - name: Download verbs.db
         run: |

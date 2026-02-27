@@ -96,7 +96,10 @@ def main():
     total = 0
     errors: list[dict] = []
 
+    _ci = os.environ.get("GH_ACTIONS") == "1"
     try:
+        if _ci:
+            raise ImportError
         from tqdm import tqdm
         iterator = tqdm(examples, desc="   Testing", ncols=80)
     except ImportError:

@@ -20,7 +20,15 @@ import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset
-from tqdm import tqdm
+
+_CI = os.environ.get("GH_ACTIONS") == "1"
+if not _CI:
+    try:
+        from tqdm import tqdm
+    except ImportError:
+        tqdm = None
+else:
+    tqdm = None
 
 from french_conjugation_model import (
     EOS_IDX,
@@ -444,9 +452,11 @@ def train():
         progress = (epoch - 1) / max(EPOCHS - 1, 1)
         tf_ratio = TEACHER_FORCING_START - (TEACHER_FORCING_START - TEACHER_FORCING_MIN) * progress
 
-        pbar = tqdm(train_loader, desc=f"   Epoch {epoch:2d}/{EPOCHS}",
-                    leave=False, file=sys.__stdout__, ncols=80)
-        for src, tgt, ms, ts, ps in pbar:
+        loader_iter = train_loader
+        if tqdm is not None:
+            loader_iter = tqdm(train_loader, desc=f"   Epoch {epoch:2d}/{EPOCHS}",
+                               leave=False, file=sys.__stdout__, ncols=80)
+        for src, tgt, ms, ts, ps in loader_iter:
             optimizer.zero_grad()
             out = model(src, tgt, ms, ts, ps, tf_ratio)
             loss = criterion(out.reshape(-1, out.size(-1)), tgt[:, 1:].reshape(-1))
@@ -455,8 +465,12 @@ def train():
             optimizer.step()
             total_loss += loss.item()
             n_batches += 1
-            pbar.set_postfix(loss=f"{total_loss / n_batches:.4f}")
-        pbar.close()
+            if tqdm is not None:
+                loader_iter.set_postfix(loss=f"{total_loss / n_batches:.4f}")
+            elif n_batches % 100 == 0:
+                print(f"   Epoch {epoch:2d}/{EPOCHS}  batch {n_batches}  loss={total_loss / n_batches:.4f}")
+        if tqdm is not None:
+            loader_iter.close()
 
         avg_loss = total_loss / n_batches
         elapsed = time.time() - t0

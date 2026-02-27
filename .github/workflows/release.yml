@@ -1,0 +1,229 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  LIBTORCH_VERSION: "2.6.0"
+
+jobs:
+  # ── Job 1: Train the Python model ──────────────────────────────────────────
+  train-model:
+    name: Train Python Model
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Download verbs.db
+        run: |
+          LATEST=$(curl -s https://api.github.com/repos/ShingZhanho/verbe-conjugaison-academie-francaise/releases/latest \
+            | python3 -c "import sys,json; r=json.load(sys.stdin); print(next(a['browser_download_url'] for a in r['assets'] if a['name']=='verbs.db'))")
+          curl -L "$LATEST" -o python_model/verbs.db
+
+      - name: Train model
+        run: |
+          cd python_model
+          python3 train_model.py
+
+      - name: Run full test & build final model
+        run: |
+          cd python_model
+          python3 full_test_model.py
+          python3 build_final_model.py
+
+      - name: Run unit tests
+        run: |
+          cd python_model
+          python3 test_model.py
+
+      - name: Upload model artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-model
+          path: |
+            python_model/conjugation_model.pt
+            python_model/conjugation_model_final.pt
+          retention-days: 1
+
+  # ── Job 2: Export to LibTorch traced components ────────────────────────────
+  export-model:
+    name: Export Traced Model
+    runs-on: ubuntu-latest
+    needs: train-model
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyTorch
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Download model artefacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-model
+          path: python_model/
+
+      - name: Export traced components
+        run: |
+          cd c_wrapper
+          python3 export_model.py
+
+      - name: Upload traced artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: traced-model
+          path: |
+            c_wrapper/conjugation_encoder.pt
+            c_wrapper/conjugation_bridge.pt
+            c_wrapper/conjugation_attention.pt
+            c_wrapper/conjugation_decoder.pt
+            c_wrapper/conjugation_meta.json
+          retention-days: 1
+
+  # ── Job 3: Build the C library & run smoke tests ───────────────────────────
+  build-c-library:
+    name: Build C Library
+    runs-on: ubuntu-latest
+    needs: export-model
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download traced artefacts
+        uses: actions/download-artifact@v4
+        with:
+          name: traced-model
+          path: c_wrapper/
+
+      - name: Install LibTorch
+        run: |
+          curl -L "https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-${LIBTORCH_VERSION}%2Bcpu.zip" -o libtorch.zip
+          unzip -q libtorch.zip -d $HOME
+          echo "LIBTORCH=$HOME/libtorch" >> $GITHUB_ENV
+
+      - name: Build
+        run: |
+          cd c_wrapper
+          mkdir build && cd build
+          cmake -DCMAKE_PREFIX_PATH=$LIBTORCH -DCMAKE_BUILD_TYPE=Release ..
+          make -j$(nproc)
+
+      - name: Run smoke tests
+        run: |
+          cd c_wrapper/build
+          export LD_LIBRARY_PATH=$LIBTORCH/lib:$LD_LIBRARY_PATH
+          ./test_conjugation ..
+
+      - name: Upload C library
+        uses: actions/upload-artifact@v4
+        with:
+          name: c-library
+          path: |
+            c_wrapper/build/libfrconjugation.so
+            c_wrapper/build/libfrconjugation_static.a
+          retention-days: 1
+
+  # ── Job 4: Build & test the Swift package ──────────────────────────────────
+  build-swift-package:
+    name: Build & Test Swift Package
+    runs-on: macos-14
+    needs: [export-model, build-c-library]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download traced artefacts
+        uses: actions/download-artifact@v4
+        with:
+          name: traced-model
+          path: c_wrapper/
+
+      - name: Install LibTorch (macOS)
+        run: |
+          curl -L "https://download.pytorch.org/libtorch/cpu/libtorch-macos-arm64-${LIBTORCH_VERSION}.zip" -o libtorch.zip
+          unzip -q libtorch.zip -d $HOME
+          echo "LIBTORCH=$HOME/libtorch" >> $GITHUB_ENV
+
+      - name: Build C library
+        run: |
+          cd c_wrapper
+          mkdir build && cd build
+          cmake -DCMAKE_PREFIX_PATH=$LIBTORCH -DCMAKE_BUILD_TYPE=Release ..
+          make -j$(sysctl -n hw.ncpu)
+
+      - name: Build Swift package
+        run: |
+          cd swift_lib
+          swift build \
+            -Xlinker -L../c_wrapper/build \
+            -Xlinker -L"$LIBTORCH/lib" \
+            -Xlinker -rpath -Xlinker "$(cd ../c_wrapper/build && pwd)" \
+            -Xlinker -rpath -Xlinker "$LIBTORCH/lib" \
+            -Xlinker -lc10 -Xlinker -ltorch -Xlinker -ltorch_cpu
+
+      - name: Test Swift package
+        run: |
+          cd swift_lib
+          swift test \
+            -Xlinker -L../c_wrapper/build \
+            -Xlinker -L"$LIBTORCH/lib" \
+            -Xlinker -rpath -Xlinker "$(cd ../c_wrapper/build && pwd)" \
+            -Xlinker -rpath -Xlinker "$LIBTORCH/lib" \
+            -Xlinker -lc10 -Xlinker -ltorch -Xlinker -ltorch_cpu
+
+  # ── Job 5: Create GitHub Release ──────────────────────────────────────────
+  release:
+    name: Publish Release
+    runs-on: ubuntu-latest
+    needs: [train-model, export-model, build-c-library, build-swift-package]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artefacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artefacts/
+
+      - name: Package release assets
+        run: |
+          mkdir -p release
+
+          # Python model checkpoints
+          cp artefacts/python-model/python_model/conjugation_model_final.pt release/
+          cp artefacts/python-model/python_model/conjugation_model.pt release/
+
+          # Traced LibTorch components
+          tar czf release/traced-model.tar.gz \
+            -C artefacts/traced-model/c_wrapper \
+            conjugation_encoder.pt conjugation_bridge.pt \
+            conjugation_attention.pt conjugation_decoder.pt \
+            conjugation_meta.json
+
+          # C library (Linux)
+          tar czf release/libfrconjugation-linux-x64.tar.gz \
+            -C artefacts/c-library/c_wrapper/build \
+            libfrconjugation.so libfrconjugation_static.a
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            release/conjugation_model_final.pt
+            release/conjugation_model.pt
+            release/traced-model.tar.gz
+            release/libfrconjugation-linux-x64.tar.gz

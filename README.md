@@ -1,258 +1,184 @@
-# French Verb Conjugation — ML Model & Cross-Language Wrappers
+# FRConjugation.Swift
 
-A lightweight, character-level seq2seq neural network that conjugates **6,288 French verbs** across all standard modes, tenses, and persons — with 100% accuracy.
+A **Swift package** for conjugating French verbs, powered by a character-level seq2seq
+neural network with Bahdanau attention.
 
-Includes ready-to-use wrappers for **Python**, **C/C++**, **Objective-C**, and **Swift**.
-
----
-
-## Repository Structure
-
-```
-.
-├── README.md                        ← You are here
-├── WRAPPERS.md                      ← C / ObjC / Swift build & API guide
-│
-├── python_model/                    ← Python module, training, & tests
-│   ├── french_conjugation_model.py  ← Reusable conjugation module (import this)
-│   ├── train_model.py               ← Training script (reads verbs.db)
-│   ├── build_final_model.py         ← Builds exception table → final model
-│   ├── test_model.py                ← 31 unit tests
-│   ├── full_test_model.py           ← Full-DB test (390,546 forms)
-│   ├── USAGE.md                     ← Detailed Python API documentation
-│   ├── conjugation_model_final.pt   ← Final model (ML + exceptions) ★
-│   ├── conjugation_model.pt         ← ML-only model (no exceptions)
-│   └── verbs.db                     ← SQLite source database (6,288 verbs)
-│
-├── c_wrapper/                       ← C/C++ library (LibTorch)
-│   ├── export_model.py              ← PyTorch → 4 traced components + JSON
-│   ├── conjugation.h                ← Public C API
-│   ├── conjugation.cpp              ← C++ implementation
-│   ├── CMakeLists.txt               ← CMake build configuration
-│   ├── test_conjugation.cpp         ← 18 C smoke tests
-│   ├── conjugation_encoder.pt       ← Traced encoder      (generated)
-│   ├── conjugation_bridge.pt        ← Traced bridge        (generated)
-│   ├── conjugation_attention.pt     ← Traced attention     (generated)
-│   ├── conjugation_decoder.pt       ← Traced decoder       (generated)
-│   └── conjugation_meta.json        ← Vocab + exceptions   (generated)
-│
-├── objc_wrapper/                    ← Objective-C wrapper
-│   ├── FRConjugation.h
-│   └── FRConjugation.m
-│
-├── swift_lib/                       ← Swift Package (idiomatic, typed API) ★
-│   ├── Package.swift
-│   ├── Sources/
-│   │   ├── CFRConjugation/          ← C bridge module
-│   │   └── FRConjugation/
-│   │       ├── Conjugator.swift      ← Main Conjugator class
-│   │       └── Types.swift           ← Mode / Tense / Person enums
-│   └── Tests/
-│       └── FRConjugationTests/
-│           └── ConjugationTests.swift
-│
-└── swift_wrapper/                   ← Legacy Swift wrapper (string-based, ObjC bridge)
-    ├── ConjugationModel.swift
-    ├── Bridging-Header.h
-    └── main.swift
-```
-
-> **Note:** Model files (`*.pt`), `verbs.db`, and build artifacts are excluded from git via `.gitignore` because of their size. See [Getting the Model Files](#getting-the-model-files) below.
-
----
-
-## Model Architecture
-
-| Component | Detail |
-|:----------|:-------|
-| **Type** | Character-level seq2seq with Bahdanau attention |
-| **Encoder** | Bidirectional GRU (256 hidden, 64-dim char embeddings) |
-| **Decoder** | GRU with attention over encoder states |
-| **Conditioning** | Mode, tense, and person embeddings (32-dim each) injected into bridge + decoder |
-| **Exception table** | 195 hard-coded corrections for edge cases (embedded in checkpoint) |
-| **Accuracy** | 100% on all 390,546 forms across 6,288 verbs |
-| **Model size** | ~6 MB (PyTorch checkpoint) |
-
-### Capabilities
-
-- **Simple tenses**: All modes × tenses × persons (indicatif, subjonctif, conditionnel, impératif)
-- **Compound tenses**: Automatically composes auxiliary (avoir/être) + past participle with agreement
-- **Participles**: Present participle, past participle (4 agreement forms: `sm`, `sf`, `pm`, `pf`)
-- **Pronominal verbs**: Detects and handles reflexive prefixing (`se laver` → `je me lave`)
-- **H-aspiré**: Correctly avoids elision before aspirate-h verbs
-
----
-
-## Getting the Model Files
-
-The binary files are too large for git. To get them, either:
-
-### Option A — Train from scratch
-
-```bash
-cd python_model
-
-# 1. Train the ML model (requires verbs.db + PyTorch)
-python3 train_model.py
-# → produces conjugation_model.pt (~6 MB)
-
-# 2. Run full test to find errors
-python3 full_test_model.py
-# → produces full_test_errors.json
-
-# 3. Build final model with exception table
-python3 build_final_model.py
-# → produces conjugation_model_final.pt (100% accuracy)
-```
-
-### Option B — Copy pre-built files
-
-If you already have the model files, place them in the right directories:
-
-```
-python_model/conjugation_model_final.pt
-python_model/conjugation_model.pt        (optional, ML-only)
-python_model/verbs.db                    (needed for training/full test)
-```
-
-For the C wrapper, generate the traced components:
-
-```bash
-cd c_wrapper
-python3 export_model.py
-```
-
----
-
-## Quick Start (Python)
-
-```python
-from french_conjugation_model import ConjugationModel
-
-model = ConjugationModel()  # loads conjugation_model_final.pt from same directory
-
-# Single conjugation
-model.conjugate("parler", mode="indicatif", tense="present", person="1s")
-# → "parle"
-
-# Compound tense
-model.conjugate("aller", mode="indicatif", tense="passe_compose", person="3s")
-# → "est allé"
-
-# All forms for a verb
-model.conjugate("finir")
-# → { "indicatif": { "present": { "1s": "finis", ... }, ... }, ... }
-
-# Past participle with agreement
-model.get_participle("prendre", "passe_sf")
-# → "prise"
-
-# Auxiliary
-model.auxiliary("aller")
-# → ["être"]
-```
-
-See [python_model/USAGE.md](python_model/USAGE.md) for the complete API reference (modes, tenses, persons, aliases).
-
----
-
-## Quick Start (C / Objective-C / Swift)
-
-The model can be used from C, Objective-C, and Swift via LibTorch. The pipeline:
-
-```
-Python (PyTorch)  →  export_model.py  →  4 traced .pt files + JSON metadata
-                                              ↓
-                          C++ / C library  (LibTorch)
-                                              ↓
-                          Objective-C wrapper
-                                              ↓
-                          Swift wrapper
-```
-
-### Build the C library
-
-```bash
-cd c_wrapper
-
-# 1. Export traced models (if not already done)
-python3 export_model.py
-
-# 2. Build with CMake
-mkdir build && cd build
-cmake -DCMAKE_PREFIX_PATH=<path-to-libtorch> -DCMAKE_BUILD_TYPE=Release ..
-make -j$(sysctl -n hw.ncpu)
-
-# 3. Run smoke tests
-./test_conjugation ..
-```
-
-### C usage
-
-```c
-#include "conjugation.h"
-
-FRConjugationModel *model = fr_conjugation_load("path/to/c_wrapper");
-char buf[256];
-fr_conjugation_conjugate(model, "parler", "indicatif", "present", "1s", buf, sizeof(buf));
-// buf → "parle"
-fr_conjugation_free(model);
-```
-
-### Swift usage (recommended: swift_lib)
+Covers **6,288 verbs** across all standard modes, tenses, and persons — with **100% accuracy**.
 
 ```swift
 import FRConjugation
 
-let conjugator = try Conjugator(modelDirectory: "path/to/c_wrapper")
+let fr = try Conjugator(modelDirectory: modelPath)
 
-// Fully typed — no raw strings
-conjugator.conjugate("aller",
-    mode: .indicatif, tense: .present, person: .firstPersonSingular)
+fr.conjugate("aller", mode: .indicatif, tense: .present, person: .firstPersonSingular)
 // → "vais"
 
-// Full paradigm
-let forms = conjugator.conjugate("finir", mode: .indicatif, tense: .present)
-for (person, form) in forms {
-    print("\(person.pronoun) \(form)")
-}
+fr.conjugate("partir", mode: .indicatif, tense: .passeCompose, person: .thirdPersonFeminineSingular)
+// → "est partie"
 
-// Participle with agreement
-conjugator.participle("partir", form: .passeFemininPlural)
-// → "parties"
+fr.participle("prendre", form: .passeFemininPlural)
+// → "prises"
 ```
-
-See [WRAPPERS.md](WRAPPERS.md) for complete build instructions and API reference.
 
 ---
 
-## Testing
+## Features
 
-### Python unit tests (31 tests)
+- **Fully typed API** — `Mode`, `Tense`, `Person`, and `ParticipleForm` enums.
+  No raw strings.
+- **Simple & compound tenses** — automatically composes auxiliary (avoir/être) +
+  past participle with gender/number agreement.
+- **Participles** — present participle and all 4 past participle agreement forms.
+- **Pronominal verbs** — reflexive prefix handled automatically.
+- **H-aspiré** — correctly detects aspirate-h verbs.
+- **Lightweight** — ~6 MB model, character-level neural network (no dictionary lookup at runtime).
+
+---
+
+## Requirements
+
+| Dependency | Version | Notes |
+|:-----------|:--------|:------|
+| Swift | ≥ 5.9 | |
+| LibTorch (C++) | 2.x | [pytorch.org](https://pytorch.org/get-started/locally/) → C++ / LibTorch |
+| `libfrconjugation` | — | Built from `c_wrapper/` (see [Building](#building)) |
+| macOS | ≥ 12 | or iOS ≥ 15 |
+
+---
+
+## Installation
+
+Add the package dependency in your `Package.swift`:
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/ShingZhanho/FRConjugation.Swift.git", from: "1.0.0"),
+]
+```
+
+Or in Xcode: **File → Add Package Dependencies** and enter the repository URL.
+
+> **Note:** At link time you must also provide the paths to `libfrconjugation` and
+> LibTorch. See [Building](#building) for details.
+
+---
+
+## API
+
+### `Conjugator`
+
+```swift
+let fr = try Conjugator(modelDirectory: "/path/to/model")
+let fr = try Conjugator(modelDirectory: modelURL)
+```
+
+Loads the model from a directory containing the exported files
+(`conjugation_encoder.pt`, `conjugation_bridge.pt`,
+`conjugation_attention.pt`, `conjugation_decoder.pt`,
+`conjugation_meta.json`).
+
+#### Conjugation
+
+```swift
+// Single form
+fr.conjugate("parler", mode: .indicatif, tense: .present, person: .firstPersonSingular)
+// → "parle"
+
+// All persons for a mode + tense
+let forms: [Person: String] = fr.conjugate("avoir", mode: .indicatif, tense: .present)
+// [.firstPersonSingular: "ai", .secondPersonSingular: "as", ...]
+```
+
+#### Participles
+
+```swift
+fr.participle("finir")                                   // → "fini"   (default: passé masc. sing.)
+fr.participle("finir", form: .present)                   // → "finissant"
+fr.participle("partir", form: .passeFemininPlural)       // → "parties"
+```
+
+#### Queries
+
+```swift
+fr.hasVerb("parler")            // true
+fr.isHAspire("haïr")            // true
+fr.verbCount                    // 6132
+
+let aux = fr.auxiliary(for: "aller")
+aux.etre            // true
+aux.avoir           // false
+aux.pronominal      // true
+```
+
+### Enums
+
+| Enum | Cases |
+|:-----|:------|
+| `Mode` | `.indicatif` `.subjonctif` `.conditionnel` `.imperatif` `.participe` |
+| `Tense` | `.present` `.imparfait` `.passeSimple` `.futurSimple` `.passeCompose` `.plusQueParfait` `.passeAnterieur` `.futurAnterieur` `.passe` |
+| `Person` | `.firstPersonSingular` `.secondPersonSingular` `.thirdPersonMasculineSingular` `.thirdPersonFeminineSingular` `.firstPersonPlural` `.secondPersonPlural` `.thirdPersonMasculinePlural` `.thirdPersonFemininePlural` |
+| `ParticipleForm` | `.present` `.passeMasculinSingular` `.passeFemininSingular` `.passeMasculinPlural` `.passeFemininPlural` |
+
+Each `Person` case also has a `.pronoun` property (`"je"`, `"tu"`, `"il"`, …) and a `.shortLabel` (`"1s"`, `"2s"`, …).
+
+---
+
+## Building
+
+The Swift package wraps a C library (`libfrconjugation`) that uses LibTorch under
+the hood. Below is the full build pipeline.
+
+### 1. Get the dataset
+
+The `verbs.db` SQLite database is a release artefact of
+[**ShingZhanho/verbe-conjugaison-academie-francaise**](https://github.com/ShingZhanho/verbe-conjugaison-academie-francaise).
+Download it and place it in `python_model/`.
+
+### 2. Train the model (or use a pre-trained checkpoint)
 
 ```bash
 cd python_model
-python3 test_model.py
+python3 train_model.py              # → conjugation_model.pt
+python3 full_test_model.py          # → full_test_errors.json
+python3 build_final_model.py        # → conjugation_model_final.pt (100%)
 ```
 
-### Full database test (390,546 forms)
+See [python_model/README.md](python_model/README.md) for details.
+
+### 3. Export to LibTorch traced components
 
 ```bash
-cd python_model
-python3 full_test_model.py
+cd c_wrapper
+python3 export_model.py
 ```
 
-### C smoke test (18 tests)
+Produces `conjugation_{encoder,bridge,attention,decoder}.pt` and
+`conjugation_meta.json`. See [c_wrapper/README.md](c_wrapper/README.md).
+
+### 4. Build the C library
 
 ```bash
-cd c_wrapper/build
-./test_conjugation ..
+cd c_wrapper
+mkdir build && cd build
+cmake -DCMAKE_PREFIX_PATH=<path-to-libtorch> -DCMAKE_BUILD_TYPE=Release ..
+make -j$(sysctl -n hw.ncpu)
 ```
 
-### Swift package tests (15 tests)
+This produces `libfrconjugation.dylib` and `libfrconjugation_static.a`.
+
+### 5. Build & test the Swift package
 
 ```bash
 cd swift_lib
+LIBTORCH=<path-to-libtorch>
+
+swift build \
+  -Xlinker -L../c_wrapper/build \
+  -Xlinker -L"$LIBTORCH/lib" \
+  -Xlinker -rpath -Xlinker ../c_wrapper/build \
+  -Xlinker -rpath -Xlinker "$LIBTORCH/lib" \
+  -Xlinker -lc10 -Xlinker -ltorch -Xlinker -ltorch_cpu
+
 swift test \
   -Xlinker -L../c_wrapper/build \
   -Xlinker -L"$LIBTORCH/lib" \
@@ -263,18 +189,72 @@ swift test \
 
 ---
 
-## Requirements
+## Repository Structure
 
-| Component | Requirement |
-|:----------|:------------|
-| Python model | Python 3.10+, PyTorch 2.x |
-| Training | + `tqdm` (optional, for progress bars) |
-| C library | CMake ≥ 3.18, LibTorch 2.x, C++17 compiler |
-| ObjC wrapper | Xcode ≥ 14, the built C library |
-| Swift package | Swift 5.9+, the built C library |
+```
+.
+├── swift_lib/                       ★ The Swift Package (FRConjugation)
+│   ├── Package.swift
+│   ├── Sources/
+│   │   ├── CFRConjugation/          C bridge module
+│   │   └── FRConjugation/
+│   │       ├── Conjugator.swift     Main API
+│   │       └── Types.swift          Enums & value types
+│   └── Tests/
+│       └── FRConjugationTests/      15 unit tests
+│
+├── python_model/                    ML model training & Python API
+│   ├── french_conjugation_model.py  Python conjugation module
+│   ├── train_model.py               Training script
+│   ├── build_final_model.py         Exception-table builder
+│   ├── test_model.py                31 unit tests
+│   ├── full_test_model.py           Full-DB validation (390,546 forms)
+│   └── README.md                    Python component docs
+│
+├── c_wrapper/                       C/C++ library (LibTorch runtime)
+│   ├── conjugation.{h,cpp}          C API
+│   ├── CMakeLists.txt               CMake build
+│   ├── export_model.py              PyTorch → traced components
+│   ├── test_conjugation.cpp         18 smoke tests
+│   └── README.md                    C component docs
+│
+├── objc_wrapper/                    Objective-C wrapper
+│   ├── FRConjugation.{h,m}
+│   └── README.md
+│
+└── swift_wrapper/                   Legacy string-based Swift wrapper
+    ├── ConjugationModel.swift
+    └── README.md
+```
+
+> Model files (`*.pt`), `verbs.db`, and build artefacts are git-ignored.
+> They are produced by the build pipeline or attached to releases.
 
 ---
 
-## License
+## Model Architecture
+
+| Component | Detail |
+|:----------|:-------|
+| Type | Character-level seq2seq with Bahdanau attention |
+| Encoder | Bidirectional GRU, 256 hidden, 64-dim char embeddings |
+| Decoder | GRU with attention over encoder states |
+| Conditioning | Mode + tense + person embeddings (32-dim each) |
+| Exception table | 195 hard-coded corrections embedded in checkpoint |
+| Accuracy | **100%** on 390,546 forms across 6,288 verbs |
+| Model size | ~6 MB |
+
+---
+
+## Data Source
+
+The training data (`verbs.db`) is a release artefact of
+[**ShingZhanho/verbe-conjugaison-academie-francaise**](https://github.com/ShingZhanho/verbe-conjugaison-academie-francaise)
+— a comprehensive French verb conjugation dataset scraped from the
+dictionaries of the Académie française.
+
+---
+
+## Licence
 
 This project is provided as-is for personal and educational use.

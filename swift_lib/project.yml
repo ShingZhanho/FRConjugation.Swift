@@ -1,6 +1,6 @@
 name: FRConjugation
 options:
-  bundleIdPrefix: com.shingjacob
+  bundleIdPrefix: com.jacobshing
   deploymentTarget:
     macOS: "12.0"
     iOS: "15.0"
@@ -16,7 +16,7 @@ settings:
 targets:
   FRConjugation:
     type: framework
-    platform: macOS
+    platform: [macOS, iOS]
     sources:
       - path: Sources/FRConjugation
         excludes:
@@ -26,11 +26,15 @@ targets:
         buildPhase: resources
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.shingjacob.FRConjugation
+        PRODUCT_BUNDLE_IDENTIFIER: com.jacobshing.FRConjugation
         INFOPLIST_FILE: ""
         GENERATE_INFOPLIST_FILE: "YES"
         DEFINES_MODULE: "YES"
         PRODUCT_MODULE_NAME: FRConjugation
+        DEAD_CODE_STRIPPING: "YES"
+        ENABLE_MODULE_VERIFIER: "YES"
+        MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS: "gnu11 gnu++14"
+        SUPPORTS_MACCATALYST: "NO"
     frameworks:
       - sdk: Accelerate.framework
 
@@ -43,9 +47,10 @@ targets:
       - target: FRConjugation
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.shingjacob.FRConjugationTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.jacobshing.FRConjugationTests
         PRODUCT_MODULE_NAME: FRConjugationTests
         GENERATE_INFOPLIST_FILE: "YES"
+        DEAD_CODE_STRIPPING: "YES"
 
 schemes:
   FRConjugation:

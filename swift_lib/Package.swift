@@ -8,20 +8,13 @@ let package = Package(
         .library(name: "FRConjugation", targets: ["FRConjugation"]),
     ],
     targets: [
-        // C bridge — exposes the C API header from c_wrapper.
-        // Link against libfrconjugation (built via CMake from c_wrapper/).
-        .target(
-            name: "CFRConjugation",
-            path: "Sources/CFRConjugation",
-            publicHeadersPath: "include",
-            linkerSettings: [
-                .linkedLibrary("frconjugation"),
-            ]
-        ),
-        // Pure-Swift idiomatic API built on top of the C bridge.
+        // Pure-Swift conjugation engine — no C or LibTorch dependency.
         .target(
             name: "FRConjugation",
-            dependencies: ["CFRConjugation"]
+            resources: [
+                .copy("Resources/model.json"),
+                .copy("Resources/weights.bin"),
+            ]
         ),
         .testTarget(
             name: "FRConjugationTests",

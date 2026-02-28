@@ -16,7 +16,7 @@ private let EOS_IDX = 2
 /// Loads the exported model and runs character-level seq2seq inference.
 ///
 /// This is an internal type — the public API is ``Conjugator``.
-final class InferenceEngine {
+final class InferenceEngine: @unchecked Sendable {
 
     // ── Vocabulary ───────────────────────────────────────────────────────
 

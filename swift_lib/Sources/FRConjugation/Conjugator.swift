@@ -31,20 +31,44 @@ import Foundation
 ///
 /// ## Thread Safety
 ///
-/// Each `Conjugator` instance is **not** thread-safe.  If you need
-/// concurrent access, create one instance per thread or protect access
-/// with a lock.
+/// `Conjugator` is fully thread-safe.  All public methods synchronise
+/// access to the underlying inference engine via an internal lock, and
+/// the type conforms to `Sendable` so it can be shared freely across
+/// concurrency domains.  A shared singleton is available via
+/// ``shared`` for convenience.
+///
+/// Async overloads of the conjugation methods are provided so that
+/// calls from `@MainActor` or other cooperative executors do not block.
 ///
 /// ## Model Directory
 ///
 /// The directory must contain the files exported by `export_weights.py`:
 /// - `model.json`  — vocabulary, metadata, weight manifest
 /// - `weights.bin` — raw float32 weight data
-public final class Conjugator {
+public final class Conjugator: @unchecked Sendable {
+
+    // MARK: - Shared Instance
+
+    /// A shared singleton backed by the bundled model resources.
+    ///
+    /// Use this when you only need the default, bundled model and want a
+    /// single instance shared across your entire application.
+    ///
+    ///     let form = Conjugator.shared.conjugate("aller",
+    ///         mode: .indicatif, tense: .present, person: .firstPersonSingular)
+    public static let shared: Conjugator = {
+        // Force-unwrap is intentional: if the bundled resources are
+        // missing the library is fundamentally broken and there is
+        // nothing the caller could do to recover.
+        try! Conjugator()
+    }()
 
     // MARK: - Private State
 
     private let engine: InferenceEngine
+
+    /// Lock that serialises all access to `engine`.
+    private let lock = NSLock()
 
     // MARK: - Linguistic Constants
 
@@ -133,7 +157,9 @@ public final class Conjugator {
 
     /// The number of verbs the model recognises.
     public var verbCount: Int {
-        engine.knownVerbs.count
+        lock.lock()
+        defer { lock.unlock() }
+        return engine.knownVerbs.count
     }
 
     // MARK: - Queries
@@ -143,7 +169,9 @@ public final class Conjugator {
     ///     conjugator.hasVerb("parler")  // true
     ///     conjugator.hasVerb("xyzzy")   // false
     public func hasVerb(_ infinitive: String) -> Bool {
-        engine.knownVerbs.contains(infinitive)
+        lock.lock()
+        defer { lock.unlock() }
+        return engine.knownVerbs.contains(infinitive)
     }
 
     /// Whether a verb beginning with *h* is h-aspiré (no elision/liaison).
@@ -151,7 +179,9 @@ public final class Conjugator {
     ///     conjugator.isHAspire("haïr")    // true
     ///     conjugator.isHAspire("habiter")  // false
     public func isHAspire(_ infinitive: String) -> Bool {
-        engine.hAspire.contains(infinitive)
+        lock.lock()
+        defer { lock.unlock() }
+        return engine.hAspire.contains(infinitive)
     }
 
     /// Whether a verb is impersonal (only conjugates for il/elle).
@@ -164,7 +194,9 @@ public final class Conjugator {
     ///     conjugator.isImpersonal("pleuvoir") // false  (has plural forms too)
     ///     conjugator.isImpersonal("parler")   // false
     public func isImpersonal(_ infinitive: String) -> Bool {
-        engine.impersonalVerbs.contains(infinitive)
+        lock.lock()
+        defer { lock.unlock() }
+        return engine.impersonalVerbs.contains(infinitive)
     }
 
     /// Whether a verb only conjugates in the third person (il/elle/ils/elles).
@@ -178,14 +210,18 @@ public final class Conjugator {
     ///     conjugator.isThirdPersonOnly("falloir")  // false  (use isImpersonal)
     ///     conjugator.isThirdPersonOnly("parler")   // false
     public func isThirdPersonOnly(_ infinitive: String) -> Bool {
-        engine.thirdPersonOnlyVerbs.contains(infinitive)
+        lock.lock()
+        defer { lock.unlock() }
+        return engine.thirdPersonOnlyVerbs.contains(infinitive)
     }
 
     /// Whether a verb is defective — either impersonal or third-person-only.
     ///
     /// This is the union of ``isImpersonal(_:)`` and ``isThirdPersonOnly(_:)``.
     public func isDefective(_ infinitive: String) -> Bool {
-        isImpersonal(infinitive) || isThirdPersonOnly(infinitive)
+        lock.lock()
+        defer { lock.unlock() }
+        return engine.impersonalVerbs.contains(infinitive) || engine.thirdPersonOnlyVerbs.contains(infinitive)
     }
 
     /// Auxiliary verb information for compound tenses.
@@ -193,6 +229,8 @@ public final class Conjugator {
     ///     let aux = conjugator.auxiliary(for: "aller")
     ///     // Auxiliary(avoir: false, etre: true, pronominal: true)
     public func auxiliary(for infinitive: String) -> Auxiliary {
+        lock.lock()
+        defer { lock.unlock() }
         let usesEtre = engine.etreVerbs.contains(infinitive)
         return Auxiliary(
             avoir: !usesEtre,
@@ -217,7 +255,9 @@ public final class Conjugator {
         tense: Tense,
         person: Person
     ) -> String? {
-        singleForm(infinitive, mode: mode.rawValue, tense: tense.rawValue, person: person.rawValue)
+        lock.lock()
+        defer { lock.unlock() }
+        return singleForm(infinitive, mode: mode.rawValue, tense: tense.rawValue, person: person.rawValue)
     }
 
     /// Conjugate all persons for a given mode and tense.
@@ -234,6 +274,8 @@ public final class Conjugator {
         mode: Mode,
         tense: Tense
     ) -> [Person: String] {
+        lock.lock()
+        defer { lock.unlock() }
         let persons: [Person] = (mode == .imperatif)
             ? [.secondPersonSingular, .firstPersonPlural, .secondPersonPlural]
             : Person.allCases
@@ -241,7 +283,7 @@ public final class Conjugator {
         var result: [Person: String] = [:]
         result.reserveCapacity(persons.count)
         for p in persons {
-            if let form = conjugate(infinitive, mode: mode, tense: tense, person: p) {
+            if let form = singleForm(infinitive, mode: mode.rawValue, tense: tense.rawValue, person: p.rawValue) {
                 result[p] = form
             }
         }
@@ -266,7 +308,9 @@ public final class Conjugator {
         _ infinitive: String,
         form: ParticipleForm = .passeMasculinSingular
     ) -> String? {
-        getParticiple(infinitive, forme: form.rawValue)
+        lock.lock()
+        defer { lock.unlock() }
+        return getParticiple(infinitive, forme: form.rawValue)
     }
 
     // MARK: - Private Helpers
@@ -347,5 +391,70 @@ public final class Conjugator {
             return nil
         }
         return "\(auxForm) \(pp)"
+    }
+
+    // MARK: - Async Interface
+
+    /// Conjugate a single form asynchronously.
+    ///
+    /// This overload off-loads the work so callers on `@MainActor` or
+    /// other cooperative executors are never blocked.
+    ///
+    ///     let form = await conjugator.conjugate("aller",
+    ///         mode: .indicatif, tense: .present, person: .firstPersonSingular)
+    ///
+    /// - Returns: The conjugated form, or `nil` if the combination is
+    ///   invalid or the verb is unknown.
+    @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+    public func conjugate(
+        _ infinitive: String,
+        mode: Mode,
+        tense: Tense,
+        person: Person
+    ) async -> String? {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let result = self.conjugate(infinitive, mode: mode, tense: tense, person: person)
+                continuation.resume(returning: result)
+            }
+        }
+    }
+
+    /// Conjugate all persons for a given mode and tense asynchronously.
+    ///
+    ///     let forms = await conjugator.conjugate("finir",
+    ///         mode: .indicatif, tense: .present)
+    ///
+    /// - Returns: A dictionary mapping each person to its conjugated form.
+    @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+    public func conjugate(
+        _ infinitive: String,
+        mode: Mode,
+        tense: Tense
+    ) async -> [Person: String] {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let result = self.conjugate(infinitive, mode: mode, tense: tense)
+                continuation.resume(returning: result)
+            }
+        }
+    }
+
+    /// Get a participle form asynchronously.
+    ///
+    ///     let pp = await conjugator.participle("partir", form: .passeFemininPlural)
+    ///
+    /// - Returns: The participle, or `nil` if unavailable.
+    @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+    public func participle(
+        _ infinitive: String,
+        form: ParticipleForm = .passeMasculinSingular
+    ) async -> String? {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let result = self.participle(infinitive, form: form)
+                continuation.resume(returning: result)
+            }
+        }
     }
 }

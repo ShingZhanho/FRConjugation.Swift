@@ -35,10 +35,12 @@ import Foundation
 /// access to the underlying inference engine via an internal lock, and
 /// the type conforms to `Sendable` so it can be shared freely across
 /// concurrency domains.  A shared singleton is available via
-/// ``shared`` for convenience.
+/// ``getShared()`` for convenience.
 ///
 /// Async overloads of the conjugation methods are provided so that
 /// calls from `@MainActor` or other cooperative executors do not block.
+/// An async factory method ``load()`` and an async ``getShared()``
+/// variant are also available to avoid blocking during model loading.
 ///
 /// ## Model Directory
 ///
@@ -49,19 +51,66 @@ public final class Conjugator: @unchecked Sendable {
 
     // MARK: - Shared Instance
 
-    /// A shared singleton backed by the bundled model resources.
+    /// The lazily-initialised shared singleton.
     ///
-    /// Use this when you only need the default, bundled model and want a
-    /// single instance shared across your entire application.
-    ///
-    ///     let form = Conjugator.shared.conjugate("aller",
-    ///         mode: .indicatif, tense: .present, person: .firstPersonSingular)
-    public static let shared: Conjugator = {
-        // Force-unwrap is intentional: if the bundled resources are
-        // missing the library is fundamentally broken and there is
-        // nothing the caller could do to recover.
+    /// Access via ``getShared()`` (sync) or ``getShared()`` `async throws`.
+    private static let _shared: Conjugator = {
         try! Conjugator()
     }()
+
+    /// Returns the shared singleton backed by bundled model resources.
+    ///
+    /// The singleton is lazily initialised on the **first call**.  That
+    /// first call blocks while the model loads (~6 MB of weights + JSON
+    /// metadata).  Subsequent calls return the cached instance instantly.
+    ///
+    /// If you are calling from a context where blocking is unacceptable
+    /// (e.g. `@MainActor`), prefer the `async` overload instead:
+    ///
+    ///     let fr = try await Conjugator.getShared()
+    ///
+    /// **Typical usage:**
+    ///
+    ///     let fr = Conjugator.getShared()
+    ///     fr.conjugate("aller", mode: .indicatif, tense: .present,
+    ///                  person: .firstPersonSingular)
+    ///     // → "vais"
+    ///
+    /// - Returns: The shared `Conjugator` instance.
+    public static func getShared() -> Conjugator {
+        _shared
+    }
+
+    /// Returns the shared singleton, loading the model off the caller's
+    /// executor so that cooperative threads (e.g. `@MainActor`) are
+    /// never blocked.
+    ///
+    /// If the singleton has already been initialised by a prior call to
+    /// ``getShared()`` (sync or async), this returns immediately.
+    ///
+    /// **Typical usage (SwiftUI):**
+    ///
+    ///     @State private var conjugator: Conjugator?
+    ///
+    ///     var body: some View {
+    ///         Text("…")
+    ///             .task {
+    ///                 conjugator = try? await Conjugator.getShared()
+    ///             }
+    ///     }
+    ///
+    /// - Throws: ``ConjugationError/modelLoadFailed(path:)`` if the
+    ///   bundled resources cannot be found (should never happen in a
+    ///   correctly-built package).
+    /// - Returns: The shared `Conjugator` instance.
+    @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+    public static func getShared() async throws -> Conjugator {
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                continuation.resume(returning: _shared)
+            }
+        }
+    }
 
     // MARK: - Private State
 
@@ -391,6 +440,66 @@ public final class Conjugator: @unchecked Sendable {
             return nil
         }
         return "\(auxForm) \(pp)"
+    }
+
+    // MARK: - Async Initialization
+
+    /// Asynchronously load the conjugation model from a directory path.
+    ///
+    /// Use this factory method when you want to keep the main thread or
+    /// the current cooperative executor free while the model loads.
+    ///
+    ///     let conjugator = try await Conjugator.load(modelDirectory: "/path/to/model")
+    ///
+    /// - Parameter path: Absolute path to the directory containing
+    ///   `model.json` and `weights.bin`.
+    /// - Throws: ``ConjugationError/modelLoadFailed(path:)`` if loading fails.
+    /// - Returns: A fully initialised `Conjugator`.
+    @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+    public static func load(modelDirectory path: String) async throws -> Conjugator {
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    let conjugator = try Conjugator(modelDirectory: path)
+                    continuation.resume(returning: conjugator)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Asynchronously load the conjugation model from a directory URL.
+    ///
+    /// - Parameter url: File URL to the model directory.
+    /// - Throws: ``ConjugationError/modelLoadFailed(path:)`` if loading fails.
+    /// - Returns: A fully initialised `Conjugator`.
+    @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+    public static func load(modelDirectory url: URL) async throws -> Conjugator {
+        try await load(modelDirectory: url.path)
+    }
+
+    /// Asynchronously load the conjugation model from bundled resources.
+    ///
+    /// This is the async equivalent of ``init()``.
+    ///
+    ///     let conjugator = try await Conjugator.load()
+    ///
+    /// - Throws: ``ConjugationError/modelLoadFailed(path:)`` if the
+    ///   bundled resources cannot be found.
+    /// - Returns: A fully initialised `Conjugator`.
+    @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+    public static func load() async throws -> Conjugator {
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    let conjugator = try Conjugator()
+                    continuation.resume(returning: conjugator)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
     }
 
     // MARK: - Async Interface

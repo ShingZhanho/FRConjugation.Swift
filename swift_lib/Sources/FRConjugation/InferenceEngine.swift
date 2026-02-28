@@ -74,7 +74,7 @@ final class InferenceEngine: @unchecked Sendable {
 
         // ── Parse vocabulary ─────────────────────────────────────────────
         let c2i = vocabDict["char_to_idx"] as! [String: Int]
-        var charToIdx = [Character: Int]()
+        var charToIdx = [Character: Int](minimumCapacity: c2i.count)
         for (k, v) in c2i {
             if let ch = k.first, k.count == 1 {
                 charToIdx[ch] = v
@@ -83,7 +83,7 @@ final class InferenceEngine: @unchecked Sendable {
         self.charToIdx = charToIdx
 
         let i2c = vocabDict["idx_to_char"] as! [String: String]
-        var idxToChar = [Int: Character]()
+        var idxToChar = [Int: Character](minimumCapacity: i2c.count)
         for (k, v) in i2c {
             if let idx = Int(k), let ch = v.first, v.count == 1 {
                 idxToChar[idx] = ch

@@ -11,7 +11,7 @@ No LibTorch, no CoreML, no Python runtime needed.
 ```swift
 import FRConjugation
 
-let fr = try Conjugator()  // loads bundled model from package resources
+let fr = Conjugator.getShared()  // loads bundled model from package resources
 
 fr.conjugate("aller", mode: .indicatif, tense: .present, person: .firstPersonSingular)
 // → "vais"
@@ -58,7 +58,7 @@ Add the package dependency in your `Package.swift`:
 
 ```swift
 dependencies: [
-  .package(url: "https://github.com/ShingZhanho/FRConjugation.Swift.git", from: "2.0.1"),
+  .package(url: "https://github.com/ShingZhanho/FRConjugation.Swift.git", from: "2.1.0"),
 ]
 ```
 
@@ -71,12 +71,24 @@ Or in Xcode: **File → Add Package Dependencies** and enter the repository URL.
 ### `Conjugator`
 
 ```swift
-// Load from bundled resources (recommended)
+// Shared singleton (recommended) — sync
+let fr = Conjugator.getShared()
+
+// Shared singleton — async (won't block the main thread)
+let fr = try await Conjugator.getShared()
+
+// Async factory (creates a new instance, non-blocking)
+let fr = try await Conjugator.load()
+
+// Load from bundled resources (new instance each time)
 let fr = try Conjugator()
 
 // Or load from a custom directory containing model.json + weights.bin
 let fr = try Conjugator(modelDirectory: "/path/to/model")
 let fr = try Conjugator(modelDirectory: modelURL)
+
+// Async load from a custom directory
+let fr = try await Conjugator.load(modelDirectory: "/path/to/model")
 ```
 
 #### Conjugation

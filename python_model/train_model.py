@@ -38,11 +38,21 @@ from french_conjugation_model import (
     Seq2SeqModel,
 )
 
+# -- Device ----------------------------------------------------------------
+
+if torch.backends.mps.is_available():
+    DEVICE = torch.device("mps")
+elif torch.cuda.is_available():
+    DEVICE = torch.device("cuda")
+else:
+    DEVICE = torch.device("cpu")
+
 # -- Paths -----------------------------------------------------------------
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(_DIR, "verbs.db")
 MODEL_PATH = os.path.join(_DIR, "conjugation_model.pt")
+RESUME_PATH = os.path.join(_DIR, "training_resume.pt")
 LOG_PATH = os.path.join(_DIR, "training_log.txt")
 
 # -- Hyperparameters -------------------------------------------------------
@@ -51,9 +61,9 @@ EMB_DIM = 64
 HIDDEN_DIM = 256
 COND_DIM = 32
 DROPOUT = 0.15
-BATCH_SIZE = 512
-EPOCHS = 30
-LR = 1e-3
+BATCH_SIZE = 1024
+EPOCHS = 25
+LR = 1.5e-3
 WEIGHT_DECAY = 0
 TEACHER_FORCING_START = 1.0
 TEACHER_FORCING_MIN = 0.1
@@ -63,16 +73,20 @@ EARLY_STOP_PATIENCE = 7
 OVERSAMPLE_VOIX_ACTIVE = 40   # only ~49 rows (defective verbs)
 OVERSAMPLE_ETRE_VERBS = 10    # ~8K rows vs 500K for avoir
 
+# Downsample multipliers for very large categories (passive ~840K, prono ~280K)
+DOWNSAMPLE_PASSIVE = 0.15   # keep 15% of passive rows
+DOWNSAMPLE_PRONO = 0.25     # keep 25% of pronominal rows
+
 # Spot-check forms each epoch
 _SPOT_CHECK = [
-    ("etre",  "voix_active_avoir", "indicatif", "present", "1sm", "suis"),
-    ("avoir", "voix_active_avoir", "indicatif", "present", "1sm", "ai"),
-    ("aller", "voix_active_etre",  "indicatif", "present", "1sm", "vais"),
-    ("faire", "voix_active_avoir", "indicatif", "present", "1sm", "fais"),
-    ("venir", "voix_active_etre",  "indicatif", "present", "1sm", "viens"),
-    ("etre",  "voix_active_avoir", "subjonctif", "present", "1sm", "sois"),
-    ("aimer", "voix_passive",      "indicatif", "present", "1sm", "suis aime"),
-    ("laver", "voix_prono",        "indicatif", "present", "1sm", "me lave"),
+    ("\u00eatre",  "voix_active_avoir", "indicatif", "pr\u00e9sent", "1sm", "suis"),
+    ("avoir", "voix_active_avoir", "indicatif", "pr\u00e9sent", "1sm", "ai"),
+    ("aller", "voix_active_etre",  "indicatif", "pr\u00e9sent", "1sm", "vais"),
+    ("faire", "voix_active_avoir", "indicatif", "pr\u00e9sent", "1sm", "fais"),
+    ("venir", "voix_active_etre",  "indicatif", "pr\u00e9sent", "1sm", "viens"),
+    ("\u00eatre",  "voix_active_avoir", "subjonctif", "pr\u00e9sent", "1sm", "sois"),
+    ("aimer", "voix_passive",      "indicatif", "pr\u00e9sent", "1sm", "suis aim\u00e9"),
+    ("laver", "voix_prono",        "indicatif", "pr\u00e9sent", "1sm", "me lave"),
 ]
 
 
@@ -171,7 +185,24 @@ def load_training_data():
 
     conn.close()
 
-    # -- oversampling --
+    # -- downsampling large categories --
+    # passive (~840K expanded) and pronominal (~280K) dominate the dataset
+    # Downsample them to keep training time manageable
+    rng = random.Random(42)
+    filtered = []
+    for ex in examples:
+        voice = ex[1]
+        if voice == "voix_passive":
+            if rng.random() < DOWNSAMPLE_PASSIVE:
+                filtered.append(ex)
+        elif voice == "voix_prono":
+            if rng.random() < DOWNSAMPLE_PRONO:
+                filtered.append(ex)
+        else:
+            filtered.append(ex)
+    examples = filtered
+
+    # -- oversampling rare categories --
     # voix_active is extremely rare (~49 rows) -- upsample heavily
     # voix_active_etre is also relatively rare -- upsample
     extra = []
@@ -311,11 +342,11 @@ def evaluate_greedy(model, examples, vocab, limit=None):
     subset = examples if limit is None else examples[:limit]
     for inf, voice, mode, tense, person, expected in subset:
         src = torch.tensor([[c2i[c] for c in inf] + [EOS_IDX]],
-                           dtype=torch.long)
-        vi = torch.tensor([v2i.get(voice, 0)], dtype=torch.long)
-        mi = torch.tensor([m2i.get(mode, 0)], dtype=torch.long)
-        ti = torch.tensor([t2i.get(tense, 0)], dtype=torch.long)
-        pi = torch.tensor([p2i.get(person, 0)], dtype=torch.long)
+                           dtype=torch.long).to(DEVICE)
+        vi = torch.tensor([v2i.get(voice, 0)], dtype=torch.long).to(DEVICE)
+        mi = torch.tensor([m2i.get(mode, 0)], dtype=torch.long).to(DEVICE)
+        ti = torch.tensor([t2i.get(tense, 0)], dtype=torch.long).to(DEVICE)
+        pi = torch.tensor([p2i.get(person, 0)], dtype=torch.long).to(DEVICE)
 
         out_ids = model.predict(src, vi, mi, ti, pi)
         predicted = "".join(i2c.get(i, "") for i in out_ids)
@@ -365,11 +396,11 @@ def _spot_check(model, vocab):
     details = []
     for inf, voice, mode, tense, person, expected in _SPOT_CHECK:
         src = torch.tensor([[c2i.get(c, 0) for c in inf] + [EOS_IDX]],
-                           dtype=torch.long)
-        vi = torch.tensor([v2i.get(voice, 0)], dtype=torch.long)
-        mi = torch.tensor([m2i.get(mode, 0)], dtype=torch.long)
-        ti = torch.tensor([t2i.get(tense, 0)], dtype=torch.long)
-        pi = torch.tensor([p2i.get(person, 0)], dtype=torch.long)
+                           dtype=torch.long).to(DEVICE)
+        vi = torch.tensor([v2i.get(voice, 0)], dtype=torch.long).to(DEVICE)
+        mi = torch.tensor([m2i.get(mode, 0)], dtype=torch.long).to(DEVICE)
+        ti = torch.tensor([t2i.get(tense, 0)], dtype=torch.long).to(DEVICE)
+        pi = torch.tensor([p2i.get(person, 0)], dtype=torch.long).to(DEVICE)
         out_ids = model.predict(src, vi, mi, ti, pi)
         pred = "".join(i2c.get(i, "") for i in out_ids)
         match = pred == expected
@@ -381,7 +412,50 @@ def _spot_check(model, vocab):
     return ok, len(_SPOT_CHECK), details
 
 
+def _save_resume_checkpoint(epoch, model, optimizer, scheduler,
+                            best_val_acc, best_state, epochs_no_improve,
+                            vocab, metadata):
+    """Save everything needed to resume training after interruption."""
+    torch.save({
+        "epoch": epoch,
+        "model_state_dict": {k: v.cpu().clone()
+                             for k, v in model.state_dict().items()},
+        "optimizer_state_dict": optimizer.state_dict(),
+        "scheduler_state_dict": scheduler.state_dict(),
+        "best_val_acc": best_val_acc,
+        "best_state": best_state,  # already on CPU
+        "epochs_no_improve": epochs_no_improve,
+        "vocab": vocab,
+        "metadata": metadata,
+        "hyperparams": {
+            "emb_dim": EMB_DIM,
+            "hidden_dim": HIDDEN_DIM,
+            "cond_dim": COND_DIM,
+            "dropout": DROPOUT,
+        },
+    }, RESUME_PATH)
+
+
+def _load_resume_checkpoint():
+    """Load resume checkpoint if it exists. Returns dict or None."""
+    if not os.path.isfile(RESUME_PATH):
+        return None
+    print(f"   Found resume checkpoint: {RESUME_PATH}")
+    cp = torch.load(RESUME_PATH, map_location="cpu", weights_only=False)
+    # quick sanity check: hyperparams must match current settings
+    hp = cp.get("hyperparams", {})
+    if (hp.get("emb_dim") != EMB_DIM or hp.get("hidden_dim") != HIDDEN_DIM
+            or hp.get("cond_dim") != COND_DIM):
+        print("   WARNING: hyperparams changed since checkpoint -- "
+              "starting fresh.")
+        return None
+    print(f"   Resuming from epoch {cp['epoch']} "
+          f"(best_val_acc={cp['best_val_acc']:.2f}%)")
+    return cp
+
+
 def train():
+    fresh = "--fresh" in sys.argv
     log_file = setup_logging()
 
     print("=" * 60)
@@ -389,11 +463,17 @@ def train():
     print("  All voices, expanded person keys, compound tenses")
     print("=" * 60)
 
+    # check for resume checkpoint before loading data
+    resume_cp = None if fresh else _load_resume_checkpoint()
+    if fresh and os.path.isfile(RESUME_PATH):
+        os.remove(RESUME_PATH)
+        print("   Removed stale resume checkpoint (--fresh).")
+
     # 1. Load data
     print("\n1. Loading data from verbs.db ...")
     examples, metadata = load_training_data()
 
-    # 2. Vocabularies
+    # 2. Vocabularies -- rebuild from data (deterministic)
     print("2. Building vocabularies ...")
     unique_examples = list({
         (inf, v, m, t, p, f): (inf, v, m, t, p, f)
@@ -406,7 +486,7 @@ def train():
     print(f"   Tenses     : {vocab['n_tenses'] - 1}")
     print(f"   Persons    : {vocab['n_persons'] - 1}")
 
-    # 3. Train/val split
+    # 3. Train/val split (deterministic with seed=42)
     random.seed(42)
     random.shuffle(examples)
     split = int(0.97 * len(examples))
@@ -427,6 +507,7 @@ def train():
 
     # 4. Model
     print("3. Building seq2seq model ...")
+    print(f"   Device     : {DEVICE}")
     model = Seq2SeqModel(
         vocab_size=vocab["vocab_size"],
         emb_dim=EMB_DIM,
@@ -437,7 +518,7 @@ def train():
         n_tenses=vocab["n_tenses"],
         n_persons=vocab["n_persons"],
         dropout=DROPOUT,
-    )
+    ).to(DEVICE)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"   Parameters : {n_params:,}")
     print(f"   Dropout    : {DROPOUT}")
@@ -449,14 +530,35 @@ def train():
         optimizer, mode="max", patience=3, factor=0.5, min_lr=1e-5,
     )
 
-    # 5. Training loop
-    print(f"\n4. Training (up to {EPOCHS} epochs, "
-          f"early-stop patience={EARLY_STOP_PATIENCE}) ...")
+    # -- Restore state if resuming --
+    start_epoch = 1
     best_val_acc = 0.0
     best_state = None
     epochs_no_improve = 0
 
-    for epoch in range(1, EPOCHS + 1):
+    if resume_cp is not None:
+        model.load_state_dict(resume_cp["model_state_dict"])
+        model.to(DEVICE)
+        optimizer.load_state_dict(resume_cp["optimizer_state_dict"])
+        # move optimizer tensors to device
+        for state in optimizer.state.values():
+            for k, v in state.items():
+                if isinstance(v, torch.Tensor):
+                    state[k] = v.to(DEVICE)
+        scheduler.load_state_dict(resume_cp["scheduler_state_dict"])
+        start_epoch = resume_cp["epoch"] + 1
+        best_val_acc = resume_cp["best_val_acc"]
+        best_state = resume_cp["best_state"]
+        epochs_no_improve = resume_cp["epochs_no_improve"]
+        print(f"   Restored state: start_epoch={start_epoch}, "
+              f"best_val_acc={best_val_acc:.2f}%, "
+              f"epochs_no_improve={epochs_no_improve}")
+
+    # 5. Training loop
+    print(f"\n4. Training (epochs {start_epoch}..{EPOCHS}, "
+          f"early-stop patience={EARLY_STOP_PATIENCE}) ...")
+
+    for epoch in range(start_epoch, EPOCHS + 1):
         model.train()
         total_loss = 0.0
         n_batches = 0
@@ -473,6 +575,12 @@ def train():
                                leave=False, file=sys.__stdout__, ncols=80)
 
         for src, tgt, vs, ms, ts, ps in loader_iter:
+            src = src.to(DEVICE)
+            tgt = tgt.to(DEVICE)
+            vs = vs.to(DEVICE)
+            ms = ms.to(DEVICE)
+            ts = ts.to(DEVICE)
+            ps = ps.to(DEVICE)
             optimizer.zero_grad()
             out = model(src, tgt, vs, ms, ts, ps, tf_ratio)
             loss = criterion(out.reshape(-1, out.size(-1)),
@@ -500,6 +608,12 @@ def train():
         val_total = 0
         with torch.no_grad():
             for src, tgt, vs, ms, ts, ps in val_loader:
+                src = src.to(DEVICE)
+                tgt = tgt.to(DEVICE)
+                vs = vs.to(DEVICE)
+                ms = ms.to(DEVICE)
+                ts = ts.to(DEVICE)
+                ps = ps.to(DEVICE)
                 out = model(src, tgt, vs, ms, ts, ps, 0.0)
                 preds = out.argmax(-1)
                 target = tgt[:, 1:]
@@ -534,7 +648,7 @@ def train():
 
         if val_acc > best_val_acc:
             best_val_acc = val_acc
-            best_state = {k: v.clone() for k, v in model.state_dict().items()}
+            best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
             epochs_no_improve = 0
         else:
             epochs_no_improve += 1
@@ -543,11 +657,20 @@ def train():
                       f"(no improvement for {EARLY_STOP_PATIENCE}).")
                 break
 
+        # save resume checkpoint after each epoch
+        _save_resume_checkpoint(
+            epoch, model, optimizer, scheduler,
+            best_val_acc, best_state, epochs_no_improve,
+            vocab, metadata,
+        )
+        print(f"   (resume checkpoint saved)")
+
     # 6. Restore best
     if best_state is None:
         print("   WARNING: no best state saved -- using final weights.")
     else:
         model.load_state_dict(best_state)
+        model.to(DEVICE)
 
     # 7. Final greedy evaluation on validation set
     print(f"\n5. Final evaluation (greedy on {len(val_ex):,} val examples) ...")
@@ -559,7 +682,8 @@ def train():
         for inf, slot, exp, pred in errors[:20]:
             print(f"     {inf} [{slot}]: '{exp}' -> got '{pred}'")
 
-    # 8. Save
+    # 8. Save (move model to CPU first for portable checkpoint)
+    model.cpu()
     print(f"\n6. Saving to {MODEL_PATH} ...")
     checkpoint = {
         "model_state_dict": model.state_dict(),
@@ -583,6 +707,12 @@ def train():
     print(f"   Model size : {size_mb:.1f} MB")
     print(f"   Best val accuracy  : {best_val_acc:.2f}%")
     print(f"   Greedy accuracy    : {final_acc:.2f}%")
+
+    # clean up resume checkpoint -- training completed
+    if os.path.isfile(RESUME_PATH):
+        os.remove(RESUME_PATH)
+        print("   Removed resume checkpoint (training complete).")
+
     print(f"\nDone. Log saved to {LOG_PATH}")
 
 

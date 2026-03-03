@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-train_model.py — Train a character-level seq2seq model for French verb conjugation.
+train_model.py -- Train a character-level seq2seq model for French verb
+conjugation.
 
-Data source : verbs.db  (SQLite – sole source of truth)
-Output      : conjugation_model.pt  (model weights + vocabularies + metadata)
+Data source: verbs.db (SQLite -- sole source of truth)
+Output:      conjugation_model.pt (model weights + vocabularies + metadata)
 
-The model learns to map  (infinitive, mode, tense, person) → conjugated form
-for all simple (single-word) tenses and participles.  Compound tenses are
-derived at inference time by composing model predictions (auxiliary + participle).
+The model learns to map (infinitive, voice, mode, tense, person) to a
+conjugated form. All voices, tenses (simple and compound), and participle
+forms from the database are included in training data.
 """
 
 import os
@@ -37,214 +38,179 @@ from french_conjugation_model import (
     Seq2SeqModel,
 )
 
-# ─── Paths ────────────────────────────────────────────────────────────────────
+# -- Paths -----------------------------------------------------------------
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(_DIR, "verbs.db")
 MODEL_PATH = os.path.join(_DIR, "conjugation_model.pt")
 LOG_PATH = os.path.join(_DIR, "training_log.txt")
 
-# ─── Hyperparameters ────────────────────────────────────────────────────────────────
+# -- Hyperparameters -------------------------------------------------------
 
 EMB_DIM = 64
 HIDDEN_DIM = 256
 COND_DIM = 32
-DROPOUT = 0.1
+DROPOUT = 0.15
 BATCH_SIZE = 512
-EPOCHS = 25
+EPOCHS = 30
 LR = 1e-3
-WEIGHT_DECAY = 0          # dropout alone provides regularisation
+WEIGHT_DECAY = 0
 TEACHER_FORCING_START = 1.0
-TEACHER_FORCING_MIN = 0.1  # let model practise autoregressive generation
+TEACHER_FORCING_MIN = 0.1
 EARLY_STOP_PATIENCE = 7
 
-# Tiered oversampling (total representation multiplier)
-OVERSAMPLE_TIER1 = 40   # être, avoir — critical auxiliaries used in every compound tense
-OVERSAMPLE_TIER2 = 15   # aller, faire, pouvoir, vouloir, venir, etc. — highly irregular
-OVERSAMPLE_TIER3 = 5    # être-only intransitives (mourir, naître, …)
+# Oversampling multipliers for rare categories
+OVERSAMPLE_VOIX_ACTIVE = 40   # only ~49 rows (defective verbs)
+OVERSAMPLE_ETRE_VERBS = 10    # ~8K rows vs 500K for avoir
 
-# Key verbs to spot-check with greedy decode each epoch
+# Spot-check forms each epoch
 _SPOT_CHECK = [
-    ("être",  "indicatif", "present", "1s", "suis"),
-    ("avoir", "indicatif", "present", "1s", "ai"),
-    ("aller", "indicatif", "present", "1s", "vais"),
-    ("faire", "indicatif", "present", "1s", "fais"),
-    ("venir", "indicatif", "present", "1s", "viens"),
-    ("être",  "subjonctif", "present", "1s", "sois"),
-    ("avoir", "indicatif", "present", "3sm", "a"),
-    ("pouvoir", "indicatif", "present", "2s", "peux"),
+    ("etre",  "voix_active_avoir", "indicatif", "present", "1sm", "suis"),
+    ("avoir", "voix_active_avoir", "indicatif", "present", "1sm", "ai"),
+    ("aller", "voix_active_etre",  "indicatif", "present", "1sm", "vais"),
+    ("faire", "voix_active_avoir", "indicatif", "present", "1sm", "fais"),
+    ("venir", "voix_active_etre",  "indicatif", "present", "1sm", "viens"),
+    ("etre",  "voix_active_avoir", "subjonctif", "present", "1sm", "sois"),
+    ("aimer", "voix_passive",      "indicatif", "present", "1sm", "suis aime"),
+    ("laver", "voix_prono",        "indicatif", "present", "1sm", "me lave"),
 ]
 
-# ─── Data loading ─────────────────────────────────────────────────────────────
+
+# -- Data loading ----------------------------------------------------------
+
+
+def _expand_person_key(merged_key):
+    """Split '1sm;1sf' into ['1sm', '1sf']."""
+    return merged_key.split(";")
 
 
 def load_training_data():
-    """Extract single-word conjugations + simple participles from verbs.db."""
+    """Load all conjugations and participles from verbs.db.
+
+    Merged person keys (like '1sm;1sf') are expanded into separate
+    training examples, each mapping to the same conjugated form.
+
+    Returns (examples, metadata_dict).
+    """
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
-    # Verbs
-    cur.execute("SELECT id, infinitif, h_aspire FROM verbes")
+    # -- verb metadata --
+    cur.execute("SELECT id, infinitif, h_aspire, rectification_1990, "
+                "rectification_1990_variante FROM verbes")
     verb_rows = cur.fetchall()
     id_to_inf = {r[0]: r[1] for r in verb_rows}
-    h_aspire = {r[1] for r in verb_rows if r[2]}
+    h_aspire = sorted({r[1] for r in verb_rows if r[2]})
+    reform_1990_verbs = sorted({r[1] for r in verb_rows if r[3]})
+    reform_variantes = {r[1]: r[4] for r in verb_rows if r[4]}
 
-    # Être verbs
-    cur.execute("SELECT DISTINCT verbe_id FROM conjugaisons WHERE voix = 'voix_active_etre'")
-    etre_verbs = {id_to_inf[r[0]] for r in cur.fetchall() if r[0] in id_to_inf}
-
-    # Pronominal verbs
-    cur.execute("SELECT DISTINCT verbe_id FROM conjugaisons WHERE voix = 'voix_prono'")
-    prono_verbs = {id_to_inf[r[0]] for r in cur.fetchall() if r[0] in id_to_inf}
-
-    # ── Single-word conjugations (simple tenses) ──
-    cur.execute(
-        """
-        SELECT v.infinitif, c.mode, c.temps, c.personne, c.conjugaison
+    # -- conjugations --
+    # Load all rows from all voices
+    cur.execute("""
+        SELECT v.infinitif, c.voix, c.mode, c.temps, c.personne, c.conjugaison
         FROM conjugaisons c
         JOIN verbes v ON c.verbe_id = v.id
-        WHERE c.voix IN ('voix_active_avoir', 'voix_active_etre')
-          AND c.conjugaison NOT LIKE '%% %%'
-        """
-    )
-    examples: list[tuple[str, str, str, str, str]] = []
-    seen: set[tuple[str, str, str, str]] = set()
-    for inf, mode, tense, person, form in cur.fetchall():
-        # Take first variant if semicolon-separated
-        form = form.split(";")[0]
-        key = (inf, mode, tense, person)
-        if key not in seen:
+    """)
+
+    # example format: (infinitive, voice, mode, tense, person, form)
+    examples = []
+    # structure tracks what slots exist per verb
+    verb_structure = {}
+    seen = set()
+
+    for inf, voice, mode, tense, person_merged, form in cur.fetchall():
+        # take first variant if semicolon-separated (reform variants)
+        form = form.split(";")[0].strip()
+
+        # expand merged person keys into individual training examples
+        for person in _expand_person_key(person_merged):
+            key = (inf, voice, mode, tense, person)
+            if key in seen:
+                continue
             seen.add(key)
-            examples.append((inf, mode, tense, person, form))
+            examples.append((inf, voice, mode, tense, person, form))
 
-    # ── Simple participles ──
-    # For intransitive verbs the DB stores the invariable (masculine singular)
-    # form for all agreement slots (passe_sm == passe_sf == passe_pm == passe_pf).
-    # Training on those duplicate-valued slots confuses the model — it can't
-    # distinguish "same form because intransitive" from "should inflect".
-    # Fix: detect invariable verbs and only keep passe_sm for them.
+            # record structure
+            vs = verb_structure.setdefault(inf, {})
+            ms = vs.setdefault(voice, {})
+            ts = ms.setdefault(mode, {})
+            ps = ts.setdefault(tense, [])
+            if person not in ps:
+                ps.append(person)
 
-    cur.execute(
-        """
-        SELECT v.infinitif, p.forme, p.participe
+    n_conj = len(examples)
+    print(f"   Conjugation examples (expanded): {n_conj:,}")
+
+    # -- participles --
+    cur.execute("""
+        SELECT v.infinitif, p.voix, p.forme, p.participe
         FROM participes p
         JOIN verbes v ON p.verbe_id = v.id
-        WHERE p.voix IN ('voix_active_avoir', 'voix_active_etre')
-          AND p.participe NOT LIKE '%% %%'
-        ORDER BY v.infinitif, p.forme
-        """
-    )
-    # First pass: collect all participles per verb
-    pp_by_verb: dict[str, dict[str, str]] = {}
-    for inf, forme, participe in cur.fetchall():
-        participe = participe.split(";")[0]
-        pp_by_verb.setdefault(inf, {})[forme] = participe
+    """)
 
-    _AGREEMENT_FORMES = {"passe_sf", "passe_pm", "passe_pf"}
+    part_seen = set()
+    for inf, voice, forme, participe in cur.fetchall():
+        participe = participe.split(";")[0].strip()
+        key = (inf, voice, forme)
+        if key in part_seen:
+            continue
+        part_seen.add(key)
+        # participles use mode="participe", tense=<forme>, person="-"
+        examples.append((inf, voice, "participe", forme, "-", participe))
 
-    pseen: set[tuple[str, str]] = set()
-    n_skipped_invariable = 0
-    for inf, formes in pp_by_verb.items():
-        sm_val = formes.get("passe_sm")
-        # Check if this verb has an invariable PP (all passe_* identical to sm)
-        is_invariable = sm_val is not None and all(
-            formes.get(f) == sm_val for f in _AGREEMENT_FORMES if f in formes
-        )
-        for forme, participe in formes.items():
-            # Skip agreement variants for invariable verbs
-            if is_invariable and forme in _AGREEMENT_FORMES:
-                n_skipped_invariable += 1
-                continue
-            key2 = (inf, forme)
-            if key2 not in pseen:
-                pseen.add(key2)
-                examples.append((inf, "participe", forme, "-", participe))
-    # Collect the set of invariable verbs for the checkpoint
-    invariable_pp_verbs = sorted(
-        inf for inf, formes in pp_by_verb.items()
-        if formes.get("passe_sm") is not None
-        and all(formes.get(f) == formes["passe_sm"]
-                for f in _AGREEMENT_FORMES if f in formes)
-    )
-    print(f"   Skipped {n_skipped_invariable} invariable PP agreement entries "
-          f"({len(invariable_pp_verbs)} verbs)")
+        # record structure
+        vs = verb_structure.setdefault(inf, {})
+        ms = vs.setdefault(voice, {})
+        ts = ms.setdefault("participe", {})
+        ps = ts.setdefault(forme, [])
+        if "-" not in ps:
+            ps.append("-")
 
-    # ── Impersonal / defective verbs ──
-    # Some verbs only conjugate in 3rd person.  Identify them so the
-    # inference layer can suppress invalid person forms.
-    #   • impersonal_verbs        – only il/elle  (3sm, 3sf)
-    #   • third_person_only_verbs – only 3rd person (3sm, 3sf, 3pm, 3pf)
-    cur.execute(
-        """
-        SELECT v.infinitif,
-               MAX(CASE WHEN c.personne NOT IN ('3sm','3sf','3pm','3pf')
-                        THEN 1 ELSE 0 END) AS has_non_third,
-               MAX(CASE WHEN c.personne IN ('3pm','3pf')
-                        THEN 1 ELSE 0 END) AS has_plural
-        FROM conjugaisons c
-        JOIN verbes v ON c.verbe_id = v.id
-        WHERE c.voix IN ('voix_active_avoir','voix_active_etre')
-        GROUP BY v.infinitif
-        HAVING has_non_third = 0
-        ORDER BY v.infinitif
-        """
-    )
-    impersonal_verbs: list[str] = []       # il/elle only
-    third_person_only_verbs: list[str] = []  # il/elle/ils/elles
-    for inf_row, _, has_plural in cur.fetchall():
-        if has_plural:
-            third_person_only_verbs.append(inf_row)
-        else:
-            impersonal_verbs.append(inf_row)
-    print(f"   Impersonal verbs (il only): {len(impersonal_verbs)}")
-    print(f"   Third-person-only verbs   : {len(third_person_only_verbs)}")
+    n_part = len(examples) - n_conj
+    print(f"   Participle examples: {n_part:,}")
 
     conn.close()
 
-    # ── Oversample underrepresented verbs ──
-    # Être-only verbs (aller, mourir, naître, …) and auxiliary verbs themselves
-    # (être, avoir) are vastly outnumbered by regular verbs.  Repeat their
-    # examples so the model sees them often enough to memorize their irregular
-    # forms.
-    avoir_verb_infs = {e[0] for e in examples} - etre_verbs
-    etre_only = etre_verbs - avoir_verb_infs  # verbs with NO avoir entries
-
-    tier1 = {"être", "avoir"}
-    tier2 = {"aller", "faire", "pouvoir", "vouloir", "savoir", "devoir",
-             "voir", "venir", "dire", "prendre"}
-    tier3 = etre_only - tier1 - tier2  # remaining être-only verbs
-
-    extra: list[tuple[str, str, str, str, str]] = []
+    # -- oversampling --
+    # voix_active is extremely rare (~49 rows) -- upsample heavily
+    # voix_active_etre is also relatively rare -- upsample
+    extra = []
     for ex in examples:
-        verb = ex[0]
-        if verb in tier1:
-            extra.extend([ex] * (OVERSAMPLE_TIER1 - 1))
-        elif verb in tier2:
-            extra.extend([ex] * (OVERSAMPLE_TIER2 - 1))
-        elif verb in tier3:
-            extra.extend([ex] * (OVERSAMPLE_TIER3 - 1))
+        voice = ex[1]
+        if voice == "voix_active":
+            extra.extend([ex] * (OVERSAMPLE_VOIX_ACTIVE - 1))
+        elif voice == "voix_active_etre":
+            extra.extend([ex] * (OVERSAMPLE_ETRE_VERBS - 1))
     examples.extend(extra)
-    print(f"   Oversampling tiers: T1({OVERSAMPLE_TIER1}x)={len(tier1)} verbs, "
-          f"T2({OVERSAMPLE_TIER2}x)={len(tier2)} verbs, "
-          f"T3({OVERSAMPLE_TIER3}x)={len(tier3)} verbs")
-    print(f"   After oversampling irregular verbs: {len(examples):,}")
 
-    return (examples, sorted(etre_verbs), sorted(prono_verbs), sorted(h_aspire),
-            invariable_pp_verbs, impersonal_verbs, third_person_only_verbs)
+    known_verbs = sorted(verb_structure.keys())
+    print(f"   Total examples (with oversampling): {len(examples):,}")
+    print(f"   Known verbs: {len(known_verbs):,}")
+
+    metadata = {
+        "h_aspire": h_aspire,
+        "reform_1990_verbs": reform_1990_verbs,
+        "reform_variantes": reform_variantes,
+        "known_verbs": known_verbs,
+        "verb_structure": verb_structure,
+    }
+    return examples, metadata
 
 
-# ─── Vocabularies ─────────────────────────────────────────────────────────────
+# -- Vocabularies ----------------------------------------------------------
 
 
 def build_vocabularies(examples):
-    chars: set[str] = set()
-    modes: set[str] = set()
-    tenses: set[str] = set()
-    persons: set[str] = set()
+    chars = set()
+    voices = set()
+    modes = set()
+    tenses = set()
+    persons = set()
 
-    for inf, mode, tense, person, form in examples:
+    for inf, voice, mode, tense, person, form in examples:
         chars.update(inf)
         chars.update(form)
+        voices.add(voice)
         modes.add(mode)
         tenses.add(tense)
         persons.add(person)
@@ -256,10 +222,12 @@ def build_vocabularies(examples):
     idx_to_char[SOS_IDX] = "<SOS>"
     idx_to_char[EOS_IDX] = "<EOS>"
 
+    sorted_voices = sorted(voices)
     sorted_modes = sorted(modes)
     sorted_tenses = sorted(tenses)
     sorted_persons = sorted(persons)
 
+    voice_to_idx = {v: i + 1 for i, v in enumerate(sorted_voices)}
     mode_to_idx = {m: i + 1 for i, m in enumerate(sorted_modes)}
     tense_to_idx = {t: i + 1 for i, t in enumerate(sorted_tenses)}
     person_to_idx = {p: i + 1 for i, p in enumerate(sorted_persons)}
@@ -267,23 +235,26 @@ def build_vocabularies(examples):
     return {
         "char_to_idx": char_to_idx,
         "idx_to_char": idx_to_char,
+        "voice_to_idx": voice_to_idx,
         "mode_to_idx": mode_to_idx,
         "tense_to_idx": tense_to_idx,
         "person_to_idx": person_to_idx,
         "vocab_size": len(sorted_chars) + 3,
+        "n_voices": len(sorted_voices) + 1,
         "n_modes": len(sorted_modes) + 1,
         "n_tenses": len(sorted_tenses) + 1,
         "n_persons": len(sorted_persons) + 1,
     }
 
 
-# ─── Dataset ──────────────────────────────────────────────────────────────────
+# -- Dataset ---------------------------------------------------------------
 
 
 class ConjugationDataset(Dataset):
     def __init__(self, examples, vocab):
         self.examples = examples
         self.c2i = vocab["char_to_idx"]
+        self.v2i = vocab["voice_to_idx"]
         self.m2i = vocab["mode_to_idx"]
         self.t2i = vocab["tense_to_idx"]
         self.p2i = vocab["person_to_idx"]
@@ -292,14 +263,16 @@ class ConjugationDataset(Dataset):
         return len(self.examples)
 
     def __getitem__(self, idx):
-        inf, mode, tense, person, form = self.examples[idx]
-        src = torch.tensor([self.c2i[c] for c in inf] + [EOS_IDX], dtype=torch.long)
+        inf, voice, mode, tense, person, form = self.examples[idx]
+        src = torch.tensor([self.c2i[c] for c in inf] + [EOS_IDX],
+                           dtype=torch.long)
         tgt = torch.tensor(
-            [SOS_IDX] + [self.c2i[c] for c in form] + [EOS_IDX], dtype=torch.long
+            [SOS_IDX] + [self.c2i[c] for c in form] + [EOS_IDX],
+            dtype=torch.long,
         )
         return (
-            src,
-            tgt,
+            src, tgt,
+            torch.tensor(self.v2i.get(voice, 0), dtype=torch.long),
             torch.tensor(self.m2i.get(mode, 0), dtype=torch.long),
             torch.tensor(self.t2i.get(tense, 0), dtype=torch.long),
             torch.tensor(self.p2i.get(person, 0), dtype=torch.long),
@@ -307,64 +280,70 @@ class ConjugationDataset(Dataset):
 
 
 def collate_fn(batch):
-    srcs, tgts, ms, ts, ps = zip(*batch)
+    srcs, tgts, vs, ms, ts, ps = zip(*batch)
     return (
         pad_sequence(srcs, batch_first=True, padding_value=PAD_IDX),
         pad_sequence(tgts, batch_first=True, padding_value=PAD_IDX),
+        torch.stack(vs),
         torch.stack(ms),
         torch.stack(ts),
         torch.stack(ps),
     )
 
 
-# ─── Training ─────────────────────────────────────────────────────────────────
+# -- Evaluation ------------------------------------------------------------
 
 
 def evaluate_greedy(model, examples, vocab, limit=None):
-    """Evaluate with greedy decoding.  Returns (correct, total, errors)."""
+    """Evaluate with greedy decoding. Returns (correct, total, errors)."""
     model.eval()
     c2i = vocab["char_to_idx"]
     i2c = vocab["idx_to_char"]
+    v2i = vocab["voice_to_idx"]
     m2i = vocab["mode_to_idx"]
     t2i = vocab["tense_to_idx"]
     p2i = vocab["person_to_idx"]
 
     correct = 0
     total = 0
-    errors: list[tuple] = []
+    errors = []
 
     subset = examples if limit is None else examples[:limit]
-    for inf, mode, tense, person, expected in subset:
-        src = torch.tensor([[c2i[c] for c in inf] + [EOS_IDX]], dtype=torch.long)
+    for inf, voice, mode, tense, person, expected in subset:
+        src = torch.tensor([[c2i[c] for c in inf] + [EOS_IDX]],
+                           dtype=torch.long)
+        vi = torch.tensor([v2i.get(voice, 0)], dtype=torch.long)
         mi = torch.tensor([m2i.get(mode, 0)], dtype=torch.long)
         ti = torch.tensor([t2i.get(tense, 0)], dtype=torch.long)
         pi = torch.tensor([p2i.get(person, 0)], dtype=torch.long)
 
-        out_ids = model.predict(src, mi, ti, pi)
+        out_ids = model.predict(src, vi, mi, ti, pi)
         predicted = "".join(i2c.get(i, "") for i in out_ids)
 
         total += 1
         if predicted == expected:
             correct += 1
         else:
-            errors.append((inf, f"{mode}.{tense}.{person}", expected, predicted))
+            errors.append((inf, f"{voice}.{mode}.{tense}.{person}",
+                           expected, predicted))
 
     return correct, total, errors
 
 
+# -- Training --------------------------------------------------------------
+
+
 def setup_logging():
-    """Duplicate all output to both stdout and training_log.txt."""
+    """Tee stdout/stderr to both terminal and log file."""
     log_file = open(LOG_PATH, "w", encoding="utf-8")
 
     class Tee:
         def __init__(self, *streams):
             self.streams = streams
-
         def write(self, data):
             for s in self.streams:
                 s.write(data)
                 s.flush()
-
         def flush(self):
             for s in self.streams:
                 s.flush()
@@ -375,26 +354,30 @@ def setup_logging():
 
 
 def _spot_check(model, vocab):
-    """Quick greedy decode of key irregular forms.  Returns (n_ok, n_total, details)."""
     c2i = vocab["char_to_idx"]
     i2c = vocab["idx_to_char"]
+    v2i = vocab["voice_to_idx"]
     m2i = vocab["mode_to_idx"]
     t2i = vocab["tense_to_idx"]
     p2i = vocab["person_to_idx"]
     model.eval()
     ok = 0
-    details: list[str] = []
-    for inf, mode, tense, person, expected in _SPOT_CHECK:
-        src = torch.tensor([[c2i[c] for c in inf] + [EOS_IDX]], dtype=torch.long)
+    details = []
+    for inf, voice, mode, tense, person, expected in _SPOT_CHECK:
+        src = torch.tensor([[c2i.get(c, 0) for c in inf] + [EOS_IDX]],
+                           dtype=torch.long)
+        vi = torch.tensor([v2i.get(voice, 0)], dtype=torch.long)
         mi = torch.tensor([m2i.get(mode, 0)], dtype=torch.long)
         ti = torch.tensor([t2i.get(tense, 0)], dtype=torch.long)
         pi = torch.tensor([p2i.get(person, 0)], dtype=torch.long)
-        out_ids = model.predict(src, mi, ti, pi)
+        out_ids = model.predict(src, vi, mi, ti, pi)
         pred = "".join(i2c.get(i, "") for i in out_ids)
-        status = "✓" if pred == expected else "✗"
-        if pred == expected:
+        match = pred == expected
+        tag = "ok" if match else "MISS"
+        if match:
             ok += 1
-        details.append(f"{status} {inf}({person})={pred} (exp {expected})")
+        details.append(f"[{tag}] {inf}({voice[:10]},{person})={pred}"
+                       f" (exp {expected})")
     return ok, len(_SPOT_CHECK), details
 
 
@@ -402,22 +385,23 @@ def train():
     log_file = setup_logging()
 
     print("=" * 60)
-    print("  French Verb Conjugation — ML Model Training")
+    print("  French Verb Conjugation -- Model Training (v3)")
+    print("  All voices, expanded person keys, compound tenses")
     print("=" * 60)
 
     # 1. Load data
-    print("\n1. Loading data from verbs.db …")
-    (examples, etre_verbs, prono_verbs, h_aspire,
-     invariable_pp_verbs, impersonal_verbs, third_person_only_verbs) = load_training_data()
-    print(f"   Training examples (with oversampling): {len(examples):,}")
+    print("\n1. Loading data from verbs.db ...")
+    examples, metadata = load_training_data()
 
-    # 2. Vocabularies (built from unique examples only)
-    print("2. Building vocabularies …")
-    unique_examples = list({(inf, m, t, p, f): (inf, m, t, p, f)
-                            for inf, m, t, p, f in examples}.values())
+    # 2. Vocabularies
+    print("2. Building vocabularies ...")
+    unique_examples = list({
+        (inf, v, m, t, p, f): (inf, v, m, t, p, f)
+        for inf, v, m, t, p, f in examples
+    }.values())
     vocab = build_vocabularies(unique_examples)
-    known_verbs = sorted({inf for inf, *_ in unique_examples})
     print(f"   Char vocab : {vocab['vocab_size']} tokens")
+    print(f"   Voices     : {vocab['n_voices'] - 1}")
     print(f"   Modes      : {vocab['n_modes'] - 1}")
     print(f"   Tenses     : {vocab['n_tenses'] - 1}")
     print(f"   Persons    : {vocab['n_persons'] - 1}")
@@ -432,26 +416,23 @@ def train():
 
     train_loader = DataLoader(
         ConjugationDataset(train_ex, vocab),
-        batch_size=BATCH_SIZE,
-        shuffle=True,
-        collate_fn=collate_fn,
-        num_workers=0,
+        batch_size=BATCH_SIZE, shuffle=True,
+        collate_fn=collate_fn, num_workers=0,
     )
     val_loader = DataLoader(
         ConjugationDataset(val_ex, vocab),
-        batch_size=BATCH_SIZE,
-        shuffle=False,
-        collate_fn=collate_fn,
-        num_workers=0,
+        batch_size=BATCH_SIZE, shuffle=False,
+        collate_fn=collate_fn, num_workers=0,
     )
 
     # 4. Model
-    print("3. Building seq2seq model …")
+    print("3. Building seq2seq model ...")
     model = Seq2SeqModel(
         vocab_size=vocab["vocab_size"],
         emb_dim=EMB_DIM,
         hidden_dim=HIDDEN_DIM,
         cond_dim=COND_DIM,
+        n_voices=vocab["n_voices"],
         n_modes=vocab["n_modes"],
         n_tenses=vocab["n_tenses"],
         n_persons=vocab["n_persons"],
@@ -462,14 +443,15 @@ def train():
     print(f"   Dropout    : {DROPOUT}")
 
     optimizer = torch.optim.Adam(model.parameters(), lr=LR,
-                                   weight_decay=WEIGHT_DECAY)
+                                 weight_decay=WEIGHT_DECAY)
     criterion = nn.CrossEntropyLoss(ignore_index=PAD_IDX)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="max", patience=3, factor=0.5, min_lr=1e-5
+        optimizer, mode="max", patience=3, factor=0.5, min_lr=1e-5,
     )
 
     # 5. Training loop
-    print(f"\n4. Training (up to {EPOCHS} epochs, early-stop patience={EARLY_STOP_PATIENCE}) …")
+    print(f"\n4. Training (up to {EPOCHS} epochs, "
+          f"early-stop patience={EARLY_STOP_PATIENCE}) ...")
     best_val_acc = 0.0
     best_state = None
     epochs_no_improve = 0
@@ -480,18 +462,21 @@ def train():
         n_batches = 0
         t0 = time.time()
 
-        # Linear decay from TEACHER_FORCING_START to TEACHER_FORCING_MIN
         progress = (epoch - 1) / max(EPOCHS - 1, 1)
-        tf_ratio = TEACHER_FORCING_START - (TEACHER_FORCING_START - TEACHER_FORCING_MIN) * progress
+        tf_ratio = (TEACHER_FORCING_START
+                    - (TEACHER_FORCING_START - TEACHER_FORCING_MIN) * progress)
 
         loader_iter = train_loader
         if tqdm is not None:
-            loader_iter = tqdm(train_loader, desc=f"   Epoch {epoch:2d}/{EPOCHS}",
+            loader_iter = tqdm(train_loader,
+                               desc=f"   Epoch {epoch:2d}/{EPOCHS}",
                                leave=False, file=sys.__stdout__, ncols=80)
-        for src, tgt, ms, ts, ps in loader_iter:
+
+        for src, tgt, vs, ms, ts, ps in loader_iter:
             optimizer.zero_grad()
-            out = model(src, tgt, ms, ts, ps, tf_ratio)
-            loss = criterion(out.reshape(-1, out.size(-1)), tgt[:, 1:].reshape(-1))
+            out = model(src, tgt, vs, ms, ts, ps, tf_ratio)
+            loss = criterion(out.reshape(-1, out.size(-1)),
+                             tgt[:, 1:].reshape(-1))
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
@@ -499,21 +484,23 @@ def train():
             n_batches += 1
             if tqdm is not None:
                 loader_iter.set_postfix(loss=f"{total_loss / n_batches:.4f}")
-            elif n_batches % 100 == 0:
-                print(f"   Epoch {epoch:2d}/{EPOCHS}  batch {n_batches}  loss={total_loss / n_batches:.4f}")
+            elif n_batches % 200 == 0:
+                print(f"   Epoch {epoch:2d}/{EPOCHS}  batch {n_batches}  "
+                      f"loss={total_loss / n_batches:.4f}")
+
         if tqdm is not None:
             loader_iter.close()
 
         avg_loss = total_loss / n_batches
         elapsed = time.time() - t0
 
-        # Quick validation (full-sequence match with TF=0)
+        # validation (token match with TF=0)
         model.eval()
         val_correct = 0
         val_total = 0
         with torch.no_grad():
-            for src, tgt, ms, ts, ps in val_loader:
-                out = model(src, tgt, ms, ts, ps, 0.0)
+            for src, tgt, vs, ms, ts, ps in val_loader:
+                out = model(src, tgt, vs, ms, ts, ps, 0.0)
                 preds = out.argmax(-1)
                 target = tgt[:, 1:]
                 for i in range(preds.size(0)):
@@ -534,17 +521,14 @@ def train():
                     val_total += 1
 
         val_acc = val_correct / val_total * 100 if val_total else 0
-        scheduler.step(val_acc)  # schedule on validation accuracy
+        scheduler.step(val_acc)
         lr_now = optimizer.param_groups[0]["lr"]
 
-        # Spot-check key irregular verbs with greedy decoding
         sc_ok, sc_n, sc_details = _spot_check(model, vocab)
 
-        print(
-            f"   Epoch {epoch:2d}/{EPOCHS}  loss={avg_loss:.4f}  "
-            f"val_acc={val_acc:.2f}%  spot={sc_ok}/{sc_n}  "
-            f"tf={tf_ratio:.2f}  lr={lr_now:.1e}  time={elapsed:.0f}s"
-        )
+        print(f"   Epoch {epoch:2d}/{EPOCHS}  loss={avg_loss:.4f}  "
+              f"val_acc={val_acc:.2f}%  spot={sc_ok}/{sc_n}  "
+              f"tf={tf_ratio:.2f}  lr={lr_now:.1e}  time={elapsed:.0f}s")
         for d in sc_details:
             print(f"     {d}")
 
@@ -555,37 +539,31 @@ def train():
         else:
             epochs_no_improve += 1
             if epochs_no_improve >= EARLY_STOP_PATIENCE:
-                print(f"\n   Early stopping after {epoch} epochs (no improvement for {EARLY_STOP_PATIENCE}).")
+                print(f"\n   Early stopping after {epoch} epochs "
+                      f"(no improvement for {EARLY_STOP_PATIENCE}).")
                 break
 
-    # 6. Restore best weights
+    # 6. Restore best
     if best_state is None:
-        print("   WARNING: no best state saved — using final weights.")
+        print("   WARNING: no best state saved -- using final weights.")
     else:
         model.load_state_dict(best_state)
 
-    # 7. Final greedy-decoding evaluation
-    print(f"\n5. Final evaluation (greedy decoding on {len(val_ex):,} val examples) …")
+    # 7. Final greedy evaluation on validation set
+    print(f"\n5. Final evaluation (greedy on {len(val_ex):,} val examples) ...")
     correct, total, errors = evaluate_greedy(model, val_ex, vocab)
     final_acc = correct / total * 100
     print(f"   Greedy accuracy: {final_acc:.2f}% ({correct:,}/{total:,})")
     if errors:
         print("   Sample errors:")
-        for inf, slot, exp, pred in errors[:15]:
-            print(f"     {inf} [{slot}]: expected '{exp}', got '{pred}'")
+        for inf, slot, exp, pred in errors[:20]:
+            print(f"     {inf} [{slot}]: '{exp}' -> got '{pred}'")
 
     # 8. Save
-    print(f"\n6. Saving to {MODEL_PATH} …")
+    print(f"\n6. Saving to {MODEL_PATH} ...")
     checkpoint = {
         "model_state_dict": model.state_dict(),
         "vocab": vocab,
-        "etre_verbs": etre_verbs,
-        "prono_verbs": prono_verbs,
-        "h_aspire": h_aspire,
-        "known_verbs": known_verbs,
-        "invariable_pp_verbs": invariable_pp_verbs,
-        "impersonal_verbs": impersonal_verbs,
-        "third_person_only_verbs": third_person_only_verbs,
         "hyperparams": {
             "emb_dim": EMB_DIM,
             "hidden_dim": HIDDEN_DIM,
@@ -593,13 +571,19 @@ def train():
             "dropout": DROPOUT,
         },
         "accuracy": final_acc,
+        # metadata
+        "known_verbs": metadata["known_verbs"],
+        "h_aspire": metadata["h_aspire"],
+        "reform_1990_verbs": metadata["reform_1990_verbs"],
+        "reform_variantes": metadata["reform_variantes"],
+        "verb_structure": metadata["verb_structure"],
     }
     torch.save(checkpoint, MODEL_PATH)
     size_mb = os.path.getsize(MODEL_PATH) / (1024 * 1024)
     print(f"   Model size : {size_mb:.1f} MB")
     print(f"   Best val accuracy  : {best_val_acc:.2f}%")
     print(f"   Greedy accuracy    : {final_acc:.2f}%")
-    print(f"\nDone!  Log saved to {LOG_PATH}")
+    print(f"\nDone. Log saved to {LOG_PATH}")
 
 
 if __name__ == "__main__":

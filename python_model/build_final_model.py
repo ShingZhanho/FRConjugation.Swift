@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-build_final_model.py — Read errors from full_test_errors.json, build an
-exception table, embed it into the checkpoint, and save as conjugation_model_final.pt.
+build_final_model.py -- Read errors from full_test_errors.json, build an
+exception table, embed it into the checkpoint, and save as
+conjugation_model_final.pt.
 
 Does NOT overwrite conjugation_model.pt.
 """
@@ -25,10 +26,11 @@ def main():
     errors = data["errors"]
     print(f"Loaded {len(errors)} errors from {ERRORS_PATH}")
 
-    # 2. Build exception table: (infinitive, mode, tense, person) → expected_form
-    exceptions: dict[str, str] = {}
+    # 2. Build exception table: voice|mode|tense|person -> expected form
+    exceptions = {}
     for e in errors:
-        key = f"{e['infinitive']}|{e['mode']}|{e['tense']}|{e['person']}"
+        key = (f"{e['infinitive']}|{e['voice']}|{e['mode']}"
+               f"|{e['tense']}|{e['person']}")
         exceptions[key] = e["expected"]
 
     print(f"Exception table: {len(exceptions)} entries")
@@ -41,11 +43,11 @@ def main():
     # 4. Add exceptions
     checkpoint["exceptions"] = exceptions
 
-    # 5. Save as new file
+    # 5. Save
     torch.save(checkpoint, DST_MODEL)
     size_mb = os.path.getsize(DST_MODEL) / (1024 * 1024)
     print(f"\nSaved final model to {DST_MODEL}")
-    print(f"  Model size: {size_mb:.1f} MB")
+    print(f"  Size: {size_mb:.1f} MB")
     print(f"  Exceptions: {len(exceptions)} entries")
 
 

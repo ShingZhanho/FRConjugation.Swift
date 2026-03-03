@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test suite for the ML-based French conjugation model."""
+"""Test suite for the French conjugation model (v3)."""
 
 from french_conjugation_model import ConjugationModel, get_model
 
@@ -9,7 +9,7 @@ print(f"Model loaded: {m}")
 
 def test(name, condition, detail=""):
     status = "PASS" if condition else "FAIL"
-    extra = f" — {detail}" if detail and not condition else ""
+    extra = f" -- {detail}" if detail and not condition else ""
     print(f"  [{status}] {name}{extra}")
     return condition
 
@@ -25,112 +25,209 @@ def check(name, condition, detail=""):
         passes += 1
 
 
-# ── 1. Simple tense conjugations ─────────────────────────────────────────────
+# -- 1. Simple tense conjugations -----------------------------------------
 
-print("\n— Simple tenses —")
+print("\n-- Simple tenses (active avoir) --")
 
-# Regular -er
-check("parler ind.present 1s",
-      m.conjugate("parler", mode="indicatif", tense="present", person="1s") == "parle")
-check("parler ind.present 2p",
-      m.conjugate("parler", mode="indicatif", tense="present", person="2p") == "parlez")
-check("parler ind.imparfait 3sm",
-      m.conjugate("parler", mode="indicatif", tense="imparfait", person="3sm") == "parlait")
+f = m.conjugate("parler", voice="voix_active_avoir", mode="indicatif",
+                tense="present", person="1sm")
+check("parler ind.present 1sm", f == "parle", f"got '{f}'")
 
-# Regular -ir
-f = m.conjugate("finir", mode="indicatif", tense="present", person="3sm")
+f = m.conjugate("parler", voice="voix_active_avoir", mode="indicatif",
+                tense="present", person="2pm")
+check("parler ind.present 2pm", f == "parlez", f"got '{f}'")
+
+f = m.conjugate("parler", voice="voix_active_avoir", mode="indicatif",
+                tense="imparfait", person="3sm")
+check("parler ind.imparfait 3sm", f == "parlait", f"got '{f}'")
+
+f = m.conjugate("finir", voice="voix_active_avoir", mode="indicatif",
+                tense="present", person="3sm")
 check("finir ind.present 3sm", f == "finit", f"got '{f}'")
-f = m.conjugate("finir", mode="indicatif", tense="present", person="1p")
-check("finir ind.present 1p", f == "finissons", f"got '{f}'")
 
-# Regular -re
-f = m.conjugate("vendre", mode="indicatif", tense="present", person="1s")
-check("vendre ind.present 1s", f == "vends", f"got '{f}'")
+f = m.conjugate("finir", voice="voix_active_avoir", mode="indicatif",
+                tense="present", person="1pm")
+check("finir ind.present 1pm", f == "finissons", f"got '{f}'")
 
-# Irregular
-f = m.conjugate("aller", mode="indicatif", tense="present", person="1s")
-check("aller ind.present 1s", f == "vais", f"got '{f}'")
-f = m.conjugate("être", mode="indicatif", tense="present", person="1s")
-check("être ind.present 1s", f == "suis", f"got '{f}'")
-f = m.conjugate("avoir", mode="indicatif", tense="present", person="1s")
-check("avoir ind.present 1s", f == "ai", f"got '{f}'")
-f = m.conjugate("faire", mode="indicatif", tense="present", person="1s")
-check("faire ind.present 1s", f == "fais", f"got '{f}'")
-f = m.conjugate("prendre", mode="indicatif", tense="present", person="1s")
-check("prendre ind.present 1s", f == "prends", f"got '{f}'")
-f = m.conjugate("venir", mode="indicatif", tense="present", person="1s")
-check("venir ind.present 1s", f == "viens", f"got '{f}'")
+f = m.conjugate("vendre", voice="voix_active_avoir", mode="indicatif",
+                tense="present", person="1sm")
+check("vendre ind.present 1sm", f == "vends", f"got '{f}'")
 
-# ── 2. Pronoun / alias resolution ────────────────────────────────────────────
+# -- 2. Irregular verbs (active) ------------------------------------------
 
-print("\n— Aliases —")
+print("\n-- Irregular verbs --")
 
-check("pronoun alias 'je'",
-      m.conjugate("parler", mode="indicatif", tense="present", person="je") == "parle")
-check("pronoun alias 'nous'",
-      m.conjugate("parler", mode="indicatif", tense="present", person="nous") == "parlons")
-check("mode alias 'ind'",
-      m.conjugate("parler", mode="ind", tense="present", person="1s") == "parle")
-check("tense alias 'présent'",
-      m.conjugate("parler", mode="indicatif", tense="présent", person="1s") == "parle")
+f = m.conjugate("aller", voice="voix_active_etre", mode="indicatif",
+                tense="present", person="1sm")
+check("aller ind.present 1sm", f == "vais", f"got '{f}'")
 
-# ── 3. Compound tenses ──────────────────────────────────────────────────────
+f = m.conjugate("avoir", voice="voix_active_avoir", mode="indicatif",
+                tense="present", person="1sm")
+check("avoir ind.present 1sm", f == "ai", f"got '{f}'")
 
-print("\n— Compound tenses —")
+# Note: "etre" is the infinitive without accents in the DB
+f = m.conjugate("\u00eatre", voice="voix_active_avoir", mode="indicatif",
+                tense="present", person="1sm")
+check("etre ind.present 1sm", f == "suis", f"got '{f}'")
 
-f = m.conjugate("parler", mode="indicatif", tense="passe_compose", person="1s")
-check("parler passé composé 1s", f == "ai parlé", f"got '{f}'")
+f = m.conjugate("faire", voice="voix_active_avoir", mode="indicatif",
+                tense="present", person="1sm")
+check("faire ind.present 1sm", f == "fais", f"got '{f}'")
 
-f = m.conjugate("parler", mode="indicatif", tense="plus_que_parfait", person="3sm")
-check("parler PQP 3sm", f == "avait parlé", f"got '{f}'")
+f = m.conjugate("venir", voice="voix_active_etre", mode="indicatif",
+                tense="present", person="1sm")
+check("venir ind.present 1sm", f == "viens", f"got '{f}'")
 
-f = m.conjugate("aller", mode="indicatif", tense="passe_compose", person="1s")
-check("aller passé composé 1s (être)", f == "suis allé", f"got '{f}'")
+# -- 3. Compound tenses ---------------------------------------------------
 
-f = m.conjugate("aller", mode="indicatif", tense="passe_compose", person="3sf")
-check("aller passé composé 3sf (agreement)", f == "est allée", f"got '{f}'")
+print("\n-- Compound tenses --")
 
-# ── 4. Participles ──────────────────────────────────────────────────────────
+f = m.conjugate("parler", voice="voix_active_avoir", mode="indicatif",
+                tense="passe_compose", person="1sm")
+check("parler passe_compose 1sm", f == "ai parl\u00e9", f"got '{f}'")
 
-print("\n— Participles —")
+f = m.conjugate("aller", voice="voix_active_etre", mode="indicatif",
+                tense="passe_compose", person="1sm")
+check("aller passe_compose 1sm (etre)", f == "suis all\u00e9", f"got '{f}'")
 
-f = m.get_participle("parler", "present")
+f = m.conjugate("aller", voice="voix_active_etre", mode="indicatif",
+                tense="passe_compose", person="3sf")
+check("aller passe_compose 3sf (agreement)", f == "est all\u00e9e",
+      f"got '{f}'")
+
+# -- 4. Passive voice ------------------------------------------------------
+
+print("\n-- Passive voice --")
+
+f = m.conjugate("aimer", voice="voix_passive", mode="indicatif",
+                tense="present", person="1sm")
+check("aimer passive ind.present 1sm", f == "suis aim\u00e9", f"got '{f}'")
+
+f = m.conjugate("aimer", voice="voix_passive", mode="indicatif",
+                tense="present", person="3sf")
+check("aimer passive ind.present 3sf", f == "est aim\u00e9e", f"got '{f}'")
+
+# -- 5. Pronominal voice --------------------------------------------------
+
+print("\n-- Pronominal voice --")
+
+f = m.conjugate("laver", voice="voix_prono", mode="indicatif",
+                tense="present", person="1sm")
+check("laver prono ind.present 1sm", f == "me lave", f"got '{f}'")
+
+f = m.conjugate("laver", voice="voix_prono", mode="indicatif",
+                tense="passe_compose", person="3sf")
+check("laver prono passe_compose 3sf", f == "s'est lav\u00e9e", f"got '{f}'")
+
+# -- 6. Participles -------------------------------------------------------
+
+print("\n-- Participles --")
+
+f = m.conjugate("parler", voice="voix_active_avoir", mode="participe",
+                tense="present")
 check("parler participe present", f == "parlant", f"got '{f}'")
-f = m.get_participle("parler", "passe_sm")
-check("parler participe passe_sm", f == "parlé", f"got '{f}'")
-f = m.get_participle("finir", "passe_sm")
+
+f = m.conjugate("parler", voice="voix_active_avoir", mode="participe",
+                tense="passe_sm")
+check("parler participe passe_sm", f == "parl\u00e9", f"got '{f}'")
+
+f = m.conjugate("finir", voice="voix_active_avoir", mode="participe",
+                tense="passe_sm")
 check("finir participe passe_sm", f == "fini", f"got '{f}'")
 
-# ── 5. Dict returns ─────────────────────────────────────────────────────────
+# -- 7. Layered parameter validation --------------------------------------
 
-print("\n— Dict returns —")
+print("\n-- Layered parameters --")
 
-result = m.conjugate("parler", mode="indicatif", tense="present")
-check("dict return for partial spec", isinstance(result, dict) and "indicatif" in result)
+try:
+    m.conjugate("parler", mode="indicatif")
+    check("mode without voice raises", False, "no exception raised")
+except ValueError:
+    check("mode without voice raises", True)
+
+try:
+    m.conjugate("parler", voice="voix_active_avoir", tense="present")
+    check("tense without mode raises", False, "no exception raised")
+except ValueError:
+    check("tense without mode raises", True)
+
+try:
+    m.conjugate("parler", voice="voix_active_avoir", mode="indicatif",
+                person="1sm")
+    check("person without tense raises", False, "no exception raised")
+except ValueError:
+    check("person without tense raises", True)
+
+# -- 8. Dict returns ------------------------------------------------------
+
+print("\n-- Dict returns --")
+
+result = m.conjugate("parler", voice="voix_active_avoir", mode="indicatif",
+                     tense="present")
+check("person dict return", isinstance(result, dict) and "1sm" in result,
+      f"got {type(result)}: {result}")
+
+result = m.conjugate("parler", voice="voix_active_avoir", mode="indicatif")
+check("tense dict return",
+      isinstance(result, dict) and "present" in result)
+
+result = m.conjugate("parler", voice="voix_active_avoir")
+check("mode dict return",
+      isinstance(result, dict) and "indicatif" in result)
 
 result = m.conjugate("parler")
-check("full conjugation dict",
-      isinstance(result, dict) and "indicatif" in result and "subjonctif" in result)
+check("full dict return",
+      isinstance(result, dict) and "voix_active_avoir" in result)
 
-# ── 6. Helpers ───────────────────────────────────────────────────────────────
+# -- 9. Metadata -----------------------------------------------------------
 
-print("\n— Helpers —")
+print("\n-- Metadata --")
 
 check("has_verb('parler')", m.has_verb("parler"))
 check("not has_verb('xyzfake')", not m.has_verb("xyzfake"))
-check("auxiliary('parler')", "avoir" in m.auxiliary("parler"))
-check("auxiliary('aller')", "être" in m.auxiliary("aller"))
 check("verb_count > 6000", m.verb_count > 6000, f"got {m.verb_count}")
 
-# ── 7. Singleton ────────────────────────────────────────────────────────────
+vs = m.voices("parler")
+check("voices('parler')", "voix_active_avoir" in vs, f"got {vs}")
 
-print("\n— Singleton —")
+vs = m.voices("aller")
+check("voices('aller')", "voix_active_etre" in vs, f"got {vs}")
+
+check("is_h_aspire('ha\u00efr')", m.is_h_aspire("ha\u00efr"))
+
+# -- 10. Verb listing / prefix search -------------------------------------
+
+print("\n-- Verb listing --")
+
+all_verbs = m.verbs()
+check("verbs() returns list", len(all_verbs) > 6000, f"got {len(all_verbs)}")
+check("verbs() sorted", all_verbs == sorted(all_verbs))
+
+a_verbs = m.verbs(prefix="a")
+check("verbs(prefix='a')", len(a_verbs) > 0 and all(
+    v.startswith("a") for v in a_verbs))
+
+et_verbs = m.verbs(prefix="\u00eat")
+check("verbs(prefix='et')", "\u00eatre" in et_verbs, f"got {et_verbs}")
+
+# -- 11. Singleton ---------------------------------------------------------
+
+print("\n-- Singleton --")
 
 m2 = get_model()
 check("get_model singleton works",
-      m2.conjugate("parler", mode="indicatif", tense="present", person="1s") == "parle")
+      m2.conjugate("parler", voice="voix_active_avoir", mode="indicatif",
+                   tense="present", person="1sm") == "parle")
 
-# ── Summary ─────────────────────────────────────────────────────────────────
+# -- 12. Aliases -----------------------------------------------------------
+
+print("\n-- Aliases --")
+
+f = m.conjugate("parler", voice="active_avoir", mode="ind",
+                tense="present", person="je")
+check("alias resolution", f == "parle", f"got '{f}'")
+
+# -- Summary ---------------------------------------------------------------
 
 print(f"\n{'='*40}")
 print(f"  {passes}/{total} tests passed")

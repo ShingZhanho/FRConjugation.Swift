@@ -404,7 +404,7 @@ def _spot_check(model, vocab):
         out_ids = model.predict(src, vi, mi, ti, pi)
         pred = "".join(i2c.get(i, "") for i in out_ids)
         match = pred == expected
-        tag = "ok" if match else "MISS"
+        tag = " OK " if match else "MISS"
         if match:
             ok += 1
         details.append(f"[{tag}] {inf}({voice[:10]},{person})={pred}"
@@ -412,21 +412,37 @@ def _spot_check(model, vocab):
     return ok, len(_SPOT_CHECK), details
 
 
+def _optimizer_state_to_cpu(optimizer):
+    """Return a copy of optimizer.state_dict() with all tensors on CPU."""
+    sd = optimizer.state_dict()
+    cpu_state = []
+    for group_state in sd["state"].values():
+        gs = {}
+        for k, v in group_state.items():
+            gs[k] = v.cpu() if isinstance(v, torch.Tensor) else v
+        cpu_state.append(gs)
+    return {
+        "state": dict(zip(sd["state"].keys(), cpu_state)),
+        "param_groups": sd["param_groups"],
+    }
+
+
 def _save_resume_checkpoint(epoch, model, optimizer, scheduler,
-                            best_val_acc, best_state, epochs_no_improve,
-                            vocab, metadata):
-    """Save everything needed to resume training after interruption."""
+                            best_val_acc, best_state, epochs_no_improve):
+    """Save everything needed to resume training after interruption.
+
+    Does NOT save vocab or metadata -- those are rebuilt deterministically
+    from verbs.db on every run, so duplicating them here wastes memory.
+    """
     torch.save({
         "epoch": epoch,
         "model_state_dict": {k: v.cpu().clone()
                              for k, v in model.state_dict().items()},
-        "optimizer_state_dict": optimizer.state_dict(),
+        "optimizer_state_dict": _optimizer_state_to_cpu(optimizer),
         "scheduler_state_dict": scheduler.state_dict(),
         "best_val_acc": best_val_acc,
         "best_state": best_state,  # already on CPU
         "epochs_no_improve": epochs_no_improve,
-        "vocab": vocab,
-        "metadata": metadata,
         "hyperparams": {
             "emb_dim": EMB_DIM,
             "hidden_dim": HIDDEN_DIM,
@@ -480,6 +496,7 @@ def train():
         for inf, v, m, t, p, f in examples
     }.values())
     vocab = build_vocabularies(unique_examples)
+    del unique_examples  # free memory
     print(f"   Char vocab : {vocab['vocab_size']} tokens")
     print(f"   Voices     : {vocab['n_voices'] - 1}")
     print(f"   Modes      : {vocab['n_modes'] - 1}")
@@ -493,6 +510,7 @@ def train():
     train_ex = examples[:split]
     val_ex = examples[split:]
     print(f"   Train: {len(train_ex):,}  |  Val: {len(val_ex):,}")
+    del examples  # train_ex and val_ex hold the actual refs now
 
     train_loader = DataLoader(
         ConjugationDataset(train_ex, vocab),
@@ -550,6 +568,9 @@ def train():
         best_val_acc = resume_cp["best_val_acc"]
         best_state = resume_cp["best_state"]
         epochs_no_improve = resume_cp["epochs_no_improve"]
+        del resume_cp  # free the loaded checkpoint (~66 MB on disk,
+                       # much more in memory)
+        import gc; gc.collect()
         print(f"   Restored state: start_epoch={start_epoch}, "
               f"best_val_acc={best_val_acc:.2f}%, "
               f"epochs_no_improve={epochs_no_improve}")
@@ -595,12 +616,19 @@ def train():
             elif n_batches % 200 == 0:
                 print(f"   Epoch {epoch:2d}/{EPOCHS}  batch {n_batches}  "
                       f"loss={total_loss / n_batches:.4f}")
+            # periodically release MPS cached memory
+            if DEVICE.type == "mps" and n_batches % 50 == 0:
+                torch.mps.empty_cache()
 
         if tqdm is not None:
             loader_iter.close()
 
         avg_loss = total_loss / n_batches
         elapsed = time.time() - t0
+
+        # release MPS cached memory before validation
+        if DEVICE.type == "mps":
+            torch.mps.empty_cache()
 
         # validation (token match with TF=0)
         model.eval()
@@ -657,11 +685,14 @@ def train():
                       f"(no improvement for {EARLY_STOP_PATIENCE}).")
                 break
 
+        # release MPS cache before checkpoint save
+        if DEVICE.type == "mps":
+            torch.mps.empty_cache()
+
         # save resume checkpoint after each epoch
         _save_resume_checkpoint(
             epoch, model, optimizer, scheduler,
             best_val_acc, best_state, epochs_no_improve,
-            vocab, metadata,
         )
         print(f"   (resume checkpoint saved)")
 

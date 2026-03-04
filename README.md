@@ -3,7 +3,8 @@
 A **pure Swift** package for conjugating French verbs, powered by a character-level seq2seq
 neural network with Bahdanau attention.
 
-Covers **6,288 verbs** across all standard modes, tenses, and persons — with **100% accuracy**.
+Covers **6,298 verbs** across **5 voices**, all modes, tenses, and
+12 gender-explicit persons — **2,559,057 conjugated forms** at **100% accuracy**.
 
 **Zero external dependencies.** Uses Apple's Accelerate framework for fast matrix operations.
 No LibTorch, no CoreML, no Python runtime needed.
@@ -13,13 +14,15 @@ import FRConjugation
 
 let fr = Conjugator.getShared()  // loads bundled model from package resources
 
-fr.conjugate("aller", mode: .indicatif, tense: .present, person: .firstPersonSingular)
+fr.conjugate("aller", voice: .activeEtre, mode: .indicatif,
+             tense: .present, person: .firstSingularMasculine)
 // → "vais"
 
-fr.conjugate("partir", mode: .indicatif, tense: .passeCompose, person: .thirdPersonFeminineSingular)
+fr.conjugate("partir", voice: .activeEtre, mode: .indicatif,
+             tense: .passeCompose, person: .thirdSingularFeminine)
 // → "est partie"
 
-fr.participle("prendre", form: .passeFemininPlural)
+fr.participle("prendre", voice: .activeAvoir, tense: .passeFemininPluriel)
 // → "prises"
 ```
 
@@ -27,15 +30,28 @@ fr.participle("prendre", form: .passeFemininPlural)
 
 ## Features
 
-- **Fully typed API** — `Mode`, `Tense`, `Person`, and `ParticipleForm` enums.
+- **Fully typed API** — `Voice`, `Mode`, `Tense`, and `Person` enums.
   No raw strings.
-- **Simple & compound tenses** — automatically composes auxiliary (avoir/être) +
-  past participle with gender/number agreement.
-- **Participles** — present participle and all 4 past participle agreement forms.
-- **Pronominal verbs** — reflexive prefix handled automatically.
+- **Five grammatical voices** — active-avoir, active-être, active,
+  passive, and pronominal.
+- **Simple & compound tenses** — all 17 tenses predicted directly by the
+  neural model (no rule-based composition).
+- **Participles** — present participle, 4 simple past participle forms,
+  and 4 compound past participle forms.
+- **12 gender-explicit persons** — masculine/feminine distinction for
+  every person (1sm, 1sf, 2sm, 2sf, 3sm, 3sf, 1pm, 1pf, 2pm, 2pf,
+  3pm, 3pf).
+- **Structure queries** — discover available voices, modes, tenses, and
+  persons for any verb dynamically.
+- **LRU cache** — configurable per-instance verb cache for repeated lookups.
+- **1990 reform** — query whether a verb has reform spellings and get
+  the variant form.
 - **H-aspiré** — correctly detects aspirate-h verbs.
 - **Pure Swift** — no C library, no LibTorch, no external ML framework.
-- **Lightweight** — ~6 MB model, character-level neural network with Accelerate-backed inference.
+- **Lightweight** — ~6 MB model, character-level neural network with
+  Accelerate-backed inference.
+- **Thread-safe** — all public methods are synchronised; `Conjugator`
+  conforms to `Sendable`.
 - **App Store ready** — no dynamic linking concerns, no large framework bundles.
 
 ---
@@ -44,9 +60,9 @@ fr.participle("prendre", form: .passeFemininPlural)
 
 | Requirement | Version |
 |:------------|:--------|
-| Swift       | ≥ 5.9   |
-| macOS       | ≥ 12    |
-| iOS         | ≥ 15    |
+| Swift       | ≥ 5.6   |
+| macOS       | ≥ 10.15 |
+| iOS         | ≥ 13    |
 
 No other dependencies.
 
@@ -58,7 +74,7 @@ Add the package dependency in your `Package.swift`:
 
 ```swift
 dependencies: [
-  .package(url: "https://github.com/ShingZhanho/FRConjugation.Swift.git", from: "2.1.0"),
+  .package(url: "https://github.com/ShingZhanho/FRConjugation.Swift.git", from: "3.0.0"),
 ]
 ```
 
@@ -77,11 +93,17 @@ let fr = Conjugator.getShared()
 // Shared singleton — async (won't block the main thread)
 let fr = try await Conjugator.getShared()
 
+// Configure cache size on first call (subsequent calls ignore the parameter)
+let fr = Conjugator.getShared(cacheSize: 128)
+
 // Async factory (creates a new instance, non-blocking)
 let fr = try await Conjugator.load()
 
 // Load from bundled resources (new instance each time)
 let fr = try Conjugator()
+
+// Custom cache size (default: 64 verbs; pass 0 to disable)
+let fr = try Conjugator(cacheSize: 256)
 
 // Or load from a custom directory containing model.json + weights.bin
 let fr = try Conjugator(modelDirectory: "/path/to/model")
@@ -95,45 +117,89 @@ let fr = try await Conjugator.load(modelDirectory: "/path/to/model")
 
 ```swift
 // Single form
-fr.conjugate("parler", mode: .indicatif, tense: .present, person: .firstPersonSingular)
+fr.conjugate("parler", voice: .activeAvoir, mode: .indicatif,
+             tense: .present, person: .firstSingularMasculine)
 // → "parle"
 
-// All persons for a mode + tense
-let forms: [Person: String] = fr.conjugate("avoir", mode: .indicatif, tense: .present)
-// [.firstPersonSingular: "ai", .secondPersonSingular: "as", ...]
+// All persons for a voice + mode + tense
+let forms: [Person: String] = fr.conjugate("avoir", voice: .activeAvoir,
+                                           mode: .indicatif, tense: .present)
+// [.firstSingularMasculine: "ai", .secondSingularMasculine: "as", ...]
+
+// All tenses and persons for a voice + mode
+let indic: [Tense: [Person: String]] = fr.conjugate("finir",
+    voice: .activeAvoir, mode: .indicatif)
+
+// All modes, tenses and persons for a voice
+let all: [Mode: [Tense: [Person: String]]] = fr.conjugate("aller",
+    voice: .activeEtre)
+
+// Everything for a verb (all voices)
+let full: [Voice: [Mode: [Tense: [Person: String]]]]? = fr.conjugate("battre")
 ```
 
 #### Participles
 
 ```swift
-fr.participle("finir")                                   // → "fini"   (default: passé masc. sing.)
-fr.participle("finir", form: .present)                   // → "finissant"
-fr.participle("partir", form: .passeFemininPlural)       // → "parties"
+fr.participle("parler", voice: .activeAvoir, tense: .present)
+// → "parlant"
+
+fr.participle("partir", voice: .activeEtre, tense: .passeFemininPluriel)
+// → "parties"
+
+// All participle forms for a voice
+let parts: [Tense: String] = fr.participles("prendre", voice: .activeAvoir)
+// [.present: "prenant", .passeMasculinSingulier: "pris",
+//  .passeFemininSingulier: "prise", ...]
 ```
 
-#### Queries
+#### Structure Queries
+
+```swift
+fr.voices("aller")
+// → [.activeEtre, .pronominal]
+
+fr.modes("aller", voice: .activeEtre)
+// → [.indicatif, .subjonctif, .conditionnel, .imperatif, .participe]
+
+fr.tenses("aller", voice: .activeEtre, mode: .indicatif)
+// → [.present, .imparfait, .passeSimple, .futurSimple, ...]
+
+fr.persons("aller", voice: .activeEtre, mode: .indicatif, tense: .present)
+// → [.firstSingularMasculine, .secondSingularMasculine, ...]
+```
+
+#### Other Queries
 
 ```swift
 fr.hasVerb("parler")            // true
 fr.isHAspire("haïr")            // true
-fr.verbCount                    // 6132
-
-let aux = fr.auxiliary(for: "aller")
-aux.etre            // true
-aux.avoir           // false
-aux.pronominal      // true
+fr.is1990Reform("céder")        // true
+fr.reformVariante("céder")      // Optional("cèder")
+fr.verbCount                    // 6298
 ```
+
+#### Caching
+
+```swift
+fr.cacheCapacity    // 64 (default)
+fr.cacheCount       // number of verbs currently cached
+fr.clearCache()     // evict all entries
+```
+
+The LRU cache is measured in **verbs** — all forms for the same verb
+share a single cache slot.  Pass `cacheSize: 0` at init to disable.
 
 ### Enums
 
 | Enum | Cases |
 |:-----|:------|
+| `Voice` | `.activeAvoir` `.activeEtre` `.active` `.passive` `.pronominal` |
 | `Mode` | `.indicatif` `.subjonctif` `.conditionnel` `.imperatif` `.participe` |
-| `Tense` | `.present` `.imparfait` `.passeSimple` `.futurSimple` `.passeCompose` `.plusQueParfait` `.passeAnterieur` `.futurAnterieur` `.passe` |
-| `Person` | `.firstPersonSingular` `.secondPersonSingular` `.thirdPersonMasculineSingular` `.thirdPersonFeminineSingular` `.firstPersonPlural` `.secondPersonPlural` `.thirdPersonMasculinePlural` `.thirdPersonFemininePlural` |
-| `ParticipleForm` | `.present` `.passeMasculinSingular` `.passeFemininSingular` `.passeMasculinPlural` `.passeFemininPlural` |
+| `Tense` | `.present` `.imparfait` `.passeSimple` `.futurSimple` `.passeCompose` `.plusQueParfait` `.passeAnterieur` `.futurAnterieur` `.passe` `.passeMasculinSingulier` `.passeFemininSingulier` `.passeMasculinPluriel` `.passeFemininPluriel` `.passeCompoundMasculinSingulier` `.passeCompoundFemininSingulier` `.passeCompoundMasculinPluriel` `.passeCompoundFemininPluriel` |
+| `Person` | `.firstSingularMasculine` `.firstSingularFeminine` `.secondSingularMasculine` `.secondSingularFeminine` `.thirdSingularMasculine` `.thirdSingularFeminine` `.firstPluralMasculine` `.firstPluralFeminine` `.secondPluralMasculine` `.secondPluralFeminine` `.thirdPluralMasculine` `.thirdPluralFeminine` |
 
-Each `Person` case also has a `.pronoun` property (`"je"`, `"tu"`, `"il"`, …) and a `.shortLabel` (`"1s"`, `"2s"`, …).
+Each `Person` case has a `.pronoun` property (`"je"`, `"tu"`, `"il"`, …) and a `.shortLabel` (`"1sm"`, `"3pf"`, …).
 
 ---
 
@@ -183,24 +249,25 @@ That's it — no LibTorch, no C library, no linker flags.
 ├── swift_lib/                       ★ The Swift Package (FRConjugation)
 │   ├── Package.swift
 │   ├── Sources/FRConjugation/
-│   │   ├── Conjugator.swift         Main API
+│   │   ├── Conjugator.swift         Main API + LRU-cached conjugation
+│   │   ├── VerbCache.swift          LRU cache (verb-keyed, O(1))
 │   │   ├── InferenceEngine.swift    Model loader + greedy decoder
 │   │   ├── Layers.swift             GRU, attention, encoder, decoder, bridge
 │   │   ├── Tensor.swift             Accelerate-backed dense tensor
-│   │   ├── Types.swift              Enums & value types
+│   │   ├── Types.swift              Voice, Mode, Tense, Person enums
 │   │   └── Resources/
 │   │       ├── model.json           Vocabulary, metadata, weight manifest
 │   │       └── weights.bin          Raw float32 weight data (~6 MB)
 │   └── Tests/
-│       └── FRConjugationTests/      15 unit tests
+│       └── FRConjugationTests/      35 unit tests
 │
 └── python_model/                    ML model training & Python API
     ├── french_conjugation_model.py  Python conjugation module
     ├── train_model.py               Training script
     ├── build_final_model.py         Exception-table builder
     ├── export_weights.py            Export to portable format
-    ├── test_model.py                31 unit tests
-    ├── full_test_model.py           Full-DB validation (390,546 forms)
+    ├── test_model.py                Unit tests
+    ├── full_test_model.py           Full-DB validation (2,559,057 forms)
     └── README.md                    Python component docs
 ```
 
@@ -216,12 +283,12 @@ That's it — no LibTorch, no C library, no linker flags.
 | Type | Character-level seq2seq with Bahdanau attention |
 | Encoder | Bidirectional GRU, 256 hidden, 64-dim char embeddings |
 | Decoder | GRU with attention over encoder states |
-| Conditioning | Mode + tense + person embeddings (32-dim each) |
-| Bridge | Linear + tanh: encoder hidden + conditioning → decoder initial state |
-| Exception table | 195 hard-coded corrections embedded in model metadata |
-| Parameters | 1,528,073 |
-| Accuracy | **100%** on 390,546 forms across 6,288 verbs |
-| Model size | ~6 MB (weights.bin) + ~120 KB (model.json) |
+| Conditioning | Voice + mode + tense + person embeddings (32-dim each) |
+| Bridge | Linear + tanh: encoder hidden + 4 conditioning embeddings → decoder initial state |
+| Exception table | 2,329 hard-coded corrections embedded in model metadata |
+| Parameters | 1,538,795 |
+| Accuracy | **100%** on 2,559,057 forms across 6,298 verbs (5 voices) |
+| Model size | ~6 MB (weights.bin) + ~474 KB (model.json) |
 
 ---
 

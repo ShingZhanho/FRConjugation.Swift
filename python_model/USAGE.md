@@ -1,6 +1,8 @@
 # French Conjugation Model — Usage Guide
 
-A lightweight, ML-based French verb conjugation engine. Given a verb infinitive and optional mode/tense/person parameters, it returns the conjugated form(s).
+A lightweight, ML-based French verb conjugation engine.  Given a verb
+infinitive and optional voice/mode/tense/person parameters, it returns
+the conjugated form(s).
 
 ## Requirements
 
@@ -19,13 +21,14 @@ from french_conjugation_model import ConjugationModel
 
 model = ConjugationModel("conjugation_model_final.pt")
 
-# Single form
-model.conjugate("parler", mode="indicatif", tense="present", person="1s")
+# Single form (voice is required when specifying mode/tense/person)
+model.conjugate("parler", voice="active_avoir", mode="indicatif",
+                tense="present", person="1sm")
 # → "parle"
 
-# All conjugations for a verb
+# All conjugations for a verb (all voices)
 model.conjugate("finir")
-# → { "indicatif": { "present": { "1s": "finis", ... }, ... }, ... }
+# → { "voix_active_avoir": { "indicatif": { "present": { "1sm": "finis", ... }, ... }, ... } }
 ```
 
 ### Singleton Helper
@@ -48,69 +51,101 @@ Calling `get_model()` again returns the same cached instance.
 
 Loads the trained model from disk.
 
-| Parameter    | Type            | Default                  | Description                        |
-|:-------------|:----------------|:-------------------------|:-----------------------------------|
-| `model_path` | `str` or `None` | `conjugation_model.pt`   | Path to the `.pt` checkpoint file. |
+| Parameter    | Type            | Default                         | Description                        |
+|:-------------|:----------------|:--------------------------------|:-----------------------------------|
+| `model_path` | `str` or `None` | `conjugation_model_final.pt`    | Path to the `.pt` checkpoint file. |
 
 ---
 
-### `model.conjugate(infinitive, *, mode=None, tense=None, person=None)`
+### `model.conjugate(infinitive, *, voice=None, mode=None, tense=None, person=None)`
 
-Main conjugation method. Returns a single string, a nested dictionary, or `None`.
+Main conjugation method.  Returns a single string, a nested dictionary, or `None`.
 
-| Parameter    | Type            | Description                                      |
-|:-------------|:----------------|:-------------------------------------------------|
-| `infinitive` | `str`           | Verb infinitive (e.g. `"parler"`, `"être"`)      |
-| `mode`       | `str` or `None` | Grammatical mode (see tables below)               |
-| `tense`      | `str` or `None` | Tense within the mode (see tables below)          |
-| `person`     | `str` or `None` | Grammatical person (see tables below)             |
+Parameters are **layered** — specifying a lower layer requires all upper
+layers to be present:
 
-**Return type depends on how many parameters are specified:**
+| Specified                                  | Returns |
+|:-------------------------------------------|:--------|
+| `voice` + `mode` + `tense` + `person`     | `str` — the conjugated form |
+| `voice` + `mode` + `tense`                | `dict` — `{ person: form }` |
+| `voice` + `mode`                           | `dict` — `{ tense: { person: form } }` |
+| `voice`                                    | `dict` — `{ mode: { tense: { person: form } } }` |
+| Nothing                                    | `dict` — `{ voice: { mode: { tense: { person: form } } } }` |
+| Verb unknown                               | `None` |
 
-| Specified             | Returns                                                     |
-|:----------------------|:------------------------------------------------------------|
-| All three             | `str` — the conjugated form                                 |
-| One or two omitted    | `dict` — nested `{ mode: { tense: { person: form } } }`    |
-| Verb unknown          | `None`                                                      |
+Specifying `person` without `tense`, or `tense` without `mode`, or
+`mode` without `voice` raises `ValueError`.
 
 #### Examples
 
 ```python
 # Single form
-model.conjugate("aller", mode="indicatif", tense="present", person="1s")
+model.conjugate("aller", voice="active_etre", mode="indicatif",
+                tense="present", person="1sm")
 # → "vais"
 
+# All persons for a tense
+model.conjugate("venir", voice="active_etre", mode="indicatif",
+                tense="passe_compose")
+# → { "1sm": "suis venu", "1sf": "suis venue", "3sf": "est venue", ... }
+
 # All tenses in indicatif
-model.conjugate("finir", mode="indicatif")
-# → { "present": {"1s": "finis", ...}, "imparfait": {...}, ... }
+model.conjugate("finir", voice="active_avoir", mode="indicatif")
+# → { "present": {"1sm": "finis", ...}, "imparfait": {...}, ... }
 
-# A specific tense across all persons
-model.conjugate("venir", mode="indicatif", tense="passe_compose")
-# → { "1s": "suis venu", "3sf": "est venue", ... }
+# All modes for a voice
+model.conjugate("aller", voice="active_etre")
+# → { "indicatif": { ... }, "subjonctif": { ... }, ... }
 
-# A specific person across all modes and tenses
-model.conjugate("avoir", person="1s")
-# → { "indicatif": { "present": {"1s": "ai"}, ... }, ... }
+# Everything
+model.conjugate("battre")
+# → { "voix_active_avoir": { ... }, "voix_prono": { ... } }
 ```
 
 ---
 
-### `model.get_participle(infinitive, forme="passe_sm")`
+### `model.voices(infinitive)`
 
-Returns a participle form.
-
-| Parameter    | Type  | Default      | Description                                               |
-|:-------------|:------|:-------------|:----------------------------------------------------------|
-| `infinitive` | `str` | —            | Verb infinitive                                           |
-| `forme`      | `str` | `"passe_sm"` | One of: `present`, `passe_sm`, `passe_sf`, `passe_pm`, `passe_pf` |
+List available voices for a verb.
 
 ```python
-model.get_participle("parler", "present")    # → "parlant"
-model.get_participle("finir")                # → "fini"
-model.get_participle("prendre", "passe_sf")  # → "prise"
+model.voices("aller")
+# → ["voix_active_etre", "voix_prono"]
+
+model.voices("manger")
+# → ["voix_active_avoir", "voix_passive", "voix_prono"]
 ```
 
-> **Note:** For intransitive verbs conjugated with *avoir* (e.g. *courir*, *dormir*), the past participle is invariable — `passe_sf`, `passe_pm`, and `passe_pf` return the same form as `passe_sm`.
+### `model.modes(infinitive, voice)`
+
+List available modes for a verb in a given voice.
+
+```python
+model.modes("parler", "active_avoir")
+# → ["conditionnel", "imperatif", "indicatif", "participe", "subjonctif"]
+```
+
+### `model.tenses(infinitive, voice, mode)`
+
+List available tenses for a verb in a given voice and mode.
+
+```python
+model.tenses("parler", "active_avoir", "indicatif")
+# → ["futur_anterieur", "futur_simple", "imparfait", "passe_anterieur",
+#    "passe_compose", "passe_simple", "plus_que_parfait", "present"]
+```
+
+### `model.persons(infinitive, voice, mode, tense)`
+
+List available person keys for a specific combination.
+
+```python
+model.persons("parler", "active_avoir", "indicatif", "present")
+# → ["1sm", "1sf", "2sm", "2sf", "3sm", "3sf", "1pm", "1pf", "2pm", "2pf", "3pm", "3pf"]
+
+model.persons("falloir", "voix_active", "indicatif", "present")
+# → ["3sm"]
+```
 
 ---
 
@@ -125,20 +160,6 @@ model.has_verb("xyzfake")  # → False
 
 ---
 
-### `model.auxiliary(infinitive) → list[str]`
-
-Returns the auxiliary verb(s) used to form compound tenses.
-
-```python
-model.auxiliary("parler")  # → ["avoir"]
-model.auxiliary("aller")   # → ["être"]
-model.auxiliary("battre")  # → ["avoir", "pronominal"]
-```
-
-Possible values in the list: `"avoir"`, `"être"`, `"pronominal"`.
-
----
-
 ### `model.is_h_aspire(infinitive) → bool`
 
 Returns whether the verb begins with an aspirate *h*.
@@ -150,23 +171,56 @@ model.is_h_aspire("habiter")  # → False
 
 ---
 
+### `model.is_1990_reform(infinitive) → bool`
+
+Returns whether the verb has 1990 orthographic reform spelling changes.
+
+```python
+model.is_1990_reform("céder")  # → True
+```
+
+### `model.reform_variante(infinitive) → str | None`
+
+Returns the 1990 reform variant spelling, or `None`.
+
+```python
+model.reform_variante("céder")  # → "cèder"
+```
+
+---
+
 ### `model.verb_count → int`
 
 The number of verbs known to the model.
 
 ```python
-model.verb_count  # → 6132
+model.verb_count  # → 6298
 ```
 
 ---
 
-### `model.verbs → list[str]`
+### `model.verbs(prefix=None) → list[str]`
 
-A sorted list of all known verb infinitives.
+A sorted list of all known verb infinitives.  Optionally filter by prefix.
+
+```python
+model.verbs()              # all 6,298 verbs
+model.verbs("par")         # ["paraître", "pardonner", "parer", "parfaire", "parier", "parler", ...]
+```
 
 ---
 
 ## Accepted Values
+
+### Voices
+
+| Canonical             | Aliases                          |
+|:----------------------|:---------------------------------|
+| `voix_active_avoir`   | `active_avoir`                   |
+| `voix_active_etre`    | `active_etre`                    |
+| `voix_active`         | `active`                         |
+| `voix_passive`        | `passive`                        |
+| `voix_prono`          | `prono`, `pronominal`            |
 
 ### Modes
 
@@ -175,61 +229,70 @@ A sorted list of all known verb infinitives.
 | `indicatif`       | `ind`                            |
 | `subjonctif`      | `sub`                            |
 | `conditionnel`    | `cond`                           |
-| `imperatif`       | `imp`, `impératif`               |
+| `imperatif`       | `imp`                            |
 | `participe`       | `part`                           |
 
 ### Tenses
 
-**Simple tenses** (directly predicted by the neural model):
+**Simple tenses:**
 
 | Mode            | Tense                | Aliases                      |
 |:----------------|:---------------------|:-----------------------------|
-| `indicatif`     | `present`            | `présent`                    |
+| `indicatif`     | `present`            |                              |
 | `indicatif`     | `imparfait`          |                              |
-| `indicatif`     | `passe_simple`       | `passé_simple`               |
+| `indicatif`     | `passe_simple`       |                              |
 | `indicatif`     | `futur_simple`       | `futur`                      |
-| `conditionnel`  | `present`            | `présent`                    |
-| `subjonctif`    | `present`            | `présent`                    |
+| `conditionnel`  | `present`            |                              |
+| `subjonctif`    | `present`            |                              |
 | `subjonctif`    | `imparfait`          |                              |
-| `imperatif`     | `present`            | `présent`                    |
+| `imperatif`     | `present`            |                              |
 
-**Compound tenses** (composed automatically from auxiliary + past participle):
+**Compound tenses** (predicted directly by the neural model):
 
 | Mode            | Tense                  | Aliases                      |
 |:----------------|:-----------------------|:-----------------------------|
-| `indicatif`     | `passe_compose`        | `passé_composé`              |
+| `indicatif`     | `passe_compose`        |                              |
 | `indicatif`     | `plus_que_parfait`     |                              |
-| `indicatif`     | `passe_anterieur`      | `passé_antérieur`            |
-| `indicatif`     | `futur_anterieur`      | `futur_antérieur`            |
-| `conditionnel`  | `passe`                | `passé`                      |
-| `subjonctif`    | `passe`                | `passé`                      |
+| `indicatif`     | `passe_anterieur`      |                              |
+| `indicatif`     | `futur_anterieur`      |                              |
+| `conditionnel`  | `passe`                |                              |
+| `subjonctif`    | `passe`                |                              |
 | `subjonctif`    | `plus_que_parfait`     |                              |
-| `imperatif`     | `passe`                | `passé`                      |
+| `imperatif`     | `passe`                |                              |
 
-**Participle formes** (used with `get_participle` or `mode="participe"`):
+**Participle sub-forms** (used with `mode="participe"`):
 
-| Forme       | Meaning                              |
-|:------------|:-------------------------------------|
-| `present`   | Present participle (*parlant*)        |
-| `passe_sm`  | Past participle, masculine singular   |
-| `passe_sf`  | Past participle, feminine singular    |
-| `passe_pm`  | Past participle, masculine plural     |
-| `passe_pf`  | Past participle, feminine plural      |
+| Tense                  | Meaning                                          |
+|:-----------------------|:-------------------------------------------------|
+| `present`              | Present participle (*parlant*)                   |
+| `passe_sm`             | Past participle, masculine singular              |
+| `passe_sf`             | Past participle, feminine singular               |
+| `passe_pm`             | Past participle, masculine plural                |
+| `passe_pf`             | Past participle, feminine plural                 |
+| `passe_compound_sm`    | Compound past participle, masculine singular     |
+| `passe_compound_sf`    | Compound past participle, feminine singular      |
+| `passe_compound_pm`    | Compound past participle, masculine plural       |
+| `passe_compound_pf`    | Compound past participle, feminine plural        |
 
 ### Persons
 
-| Canonical | Aliases          | Meaning                       |
-|:----------|:-----------------|:------------------------------|
-| `1s`      | `je`             | First person singular         |
-| `2s`      | `tu`             | Second person singular        |
-| `3sm`     | `il`, `on`, `3s` | Third person singular masc.   |
-| `3sf`     | `elle`           | Third person singular fem.    |
-| `1p`      | `nous`           | First person plural           |
-| `2p`      | `vous`           | Second person plural          |
-| `3pm`     | `ils`, `3p`      | Third person plural masc.     |
-| `3pf`     | `elles`          | Third person plural fem.      |
+| Canonical | Aliases          | Meaning                        |
+|:----------|:-----------------|:-------------------------------|
+| `1sm`     | `je`             | First person singular masc.    |
+| `1sf`     |                  | First person singular fem.     |
+| `2sm`     | `tu`             | Second person singular masc.   |
+| `2sf`     |                  | Second person singular fem.    |
+| `3sm`     | `il`, `on`       | Third person singular masc.    |
+| `3sf`     | `elle`           | Third person singular fem.     |
+| `1pm`     | `nous`           | First person plural masc.      |
+| `1pf`     |                  | First person plural fem.       |
+| `2pm`     | `vous`           | Second person plural masc.     |
+| `2pf`     |                  | Second person plural fem.      |
+| `3pm`     | `ils`            | Third person plural masc.      |
+| `3pf`     | `elles`          | Third person plural fem.       |
+| `-`       |                  | No person (participles)        |
 
-> **Imperatif** only uses `2s`, `1p`, `2p`.
+> **Imperatif** only uses `2sm`/`2sf`, `1pm`/`1pf`, `2pm`/`2pf`.
 
 ---
 
@@ -241,23 +304,30 @@ The module can also be run directly from the command line:
 # Full conjugation table
 python french_conjugation_model.py parler
 
-# Specific form
-python french_conjugation_model.py aller indicatif present 1s
+# Specific form (verb voice mode tense person)
+python french_conjugation_model.py aller active_etre indicatif present 1sm
 ```
 
-Arguments: `verb [mode] [tense] [person]`
+Arguments: `verb [voice] [mode] [tense] [person]`
 
 ---
 
 ## Architecture Summary
 
-The model is a character-level sequence-to-sequence neural network with Bahdanau attention, built in PyTorch:
+The model is a character-level sequence-to-sequence neural network with
+Bahdanau attention, built in PyTorch:
 
 - **Encoder:** Bidirectional GRU over the input verb's characters
-- **Decoder:** GRU with attention, conditioned on mode/tense/person via learned embeddings
-- **Exception table:** A small lookup (195 entries) embedded in the checkpoint to guarantee 100% accuracy on the training vocabulary
+- **Decoder:** GRU with attention, conditioned on voice/mode/tense/person
+  via four learned embeddings (32-dim each)
+- **Bridge:** Linear + tanh combining encoder final hidden + 4 conditioning
+  embeddings into the decoder initial hidden state
+- **Exception table:** A small lookup (2,329 entries) embedded in the
+  checkpoint to guarantee 100% accuracy on the training vocabulary
 
-The model file is approximately **6 MB** and covers **6,132 French verbs** across all simple and compound tenses — **390,546 conjugated forms** at **100% accuracy**.
+The model has **1,538,795 parameters**, is approximately **6 MB**, and
+covers **6,298 French verbs** across **5 voices** — **2,559,057
+conjugated forms** at **100% accuracy**.
 
 ---
 
@@ -267,9 +337,10 @@ The model file is approximately **6 MB** and covers **6,132 French verbs** acros
 |:---------------------------------|:-----------------------------------------------------------|
 | `french_conjugation_model.py`    | Module to load and use the model (import this)             |
 | `conjugation_model_final.pt`     | Final model checkpoint (ML weights + exception table)      |
-| `conjugation_model.pt`           | ML-only model checkpoint (no exception table, 99.95%)      |
+| `conjugation_model.pt`           | ML-only model checkpoint (no exception table, ~99.91%)     |
 | `train_model.py`                 | Training script (produces `conjugation_model.pt`)          |
 | `build_final_model.py`           | Builds the final model by adding the exception table       |
-| `test_model.py`                  | Unit tests (31 tests)                                      |
+| `export_weights.py`              | Export weights to portable format for Swift package         |
+| `test_model.py`                  | Unit tests                                                 |
 | `full_test_model.py`             | Full dataset test against `verbs.db`                       |
-| `verbs.db`                       | SQLite database of 6,288 French verbs (source of truth)    |
+| `verbs.db`                       | SQLite database of 6,298 French verbs (source of truth)    |

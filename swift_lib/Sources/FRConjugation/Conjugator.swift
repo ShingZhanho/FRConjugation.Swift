@@ -34,74 +34,134 @@ import Foundation
 /// // → [.activeEtre, .pronominal]
 /// ```
 ///
+/// ## Caching
+///
+/// Each `Conjugator` instance maintains an internal **LRU cache** that
+/// stores previously-predicted forms indexed by verb infinitive.  The
+/// cache size is measured in **verbs** — all forms for the same verb
+/// share a single cache slot.
+///
+/// ```swift
+/// // Default: 64-verb cache
+/// let fr = try Conjugator()
+///
+/// // Custom cache size (256 verbs)
+/// let fr = try Conjugator(cacheSize: 256)
+///
+/// // Disable caching entirely
+/// let fr = try Conjugator(cacheSize: 0)
+///
+/// // Configure the shared singleton's cache (must be first call)
+/// let fr = Conjugator.getShared(cacheSize: 128)
+/// ```
+///
 /// ## Thread Safety
 ///
 /// `Conjugator` is fully thread-safe.  All public methods synchronise
-/// access to the underlying inference engine via an internal lock, and
-/// the type conforms to `Sendable` so it can be shared freely across
-/// concurrency domains.  A shared singleton is available via
-/// ``getShared()`` for convenience.
+/// access to the underlying inference engine and cache via an internal
+/// lock, and the type conforms to `Sendable` so it can be shared
+/// freely across concurrency domains.  A shared singleton is available
+/// via ``getShared()`` for convenience.
 public final class Conjugator: @unchecked Sendable {
 
     // MARK: - Shared Instance
 
-    private static let _shared: Conjugator = {
-        try! Conjugator()
-    }()
+    /// The default cache capacity used when none is specified.
+    public static let defaultCacheSize = 64
+
+    private static var _shared: Conjugator?
+    private static let _sharedLock = NSLock()
 
     /// Returns the shared singleton backed by bundled model resources.
     ///
-    /// The singleton is lazily initialised on the **first call**.
+    /// The singleton is lazily initialised on the **first call**.  You
+    /// may optionally pass `cacheSize` on the *first* call to configure
+    /// the cache; subsequent calls ignore the parameter.
     ///
+    ///     // First call — sets cache to 128 verbs:
+    ///     let fr = Conjugator.getShared(cacheSize: 128)
+    ///
+    ///     // Later calls — returns the same instance (cacheSize ignored):
     ///     let fr = Conjugator.getShared()
-    ///     fr.conjugate("aller", voice: .activeEtre, mode: .indicatif,
-    ///                  tense: .present, person: .firstSingularMasculine)
-    ///     // → "vais"
-    public static func getShared() -> Conjugator {
-        _shared
+    ///
+    /// - Parameter cacheSize: Maximum number of verbs to cache.
+    ///   Only honoured on the first call.  Defaults to
+    ///   ``defaultCacheSize`` (64).
+    /// - Returns: The shared `Conjugator` instance.
+    public static func getShared(cacheSize: Int = defaultCacheSize) -> Conjugator {
+        _sharedLock.lock()
+        defer { _sharedLock.unlock() }
+        if let existing = _shared { return existing }
+        let instance = try! Conjugator(cacheSize: cacheSize)
+        _shared = instance
+        return instance
     }
 
     /// Returns the shared singleton asynchronously.
+    ///
+    /// - Parameter cacheSize: Maximum number of verbs to cache.
+    ///   Only honoured on the first call.
     @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
-    public static func getShared() async throws -> Conjugator {
+    public static func getShared(cacheSize: Int = defaultCacheSize) async throws -> Conjugator {
         try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
-                continuation.resume(returning: _shared)
+                continuation.resume(returning: getShared(cacheSize: cacheSize))
             }
         }
+    }
+
+    /// Reset the shared singleton.  Internal — used by tests to ensure
+    /// a fresh state between test methods.
+    static func _resetShared() {
+        _sharedLock.lock()
+        defer { _sharedLock.unlock() }
+        _shared = nil
     }
 
     // MARK: - Private State
 
     private let engine: InferenceEngine
     private let lock = NSLock()
+    private let cache: VerbCache
 
     // MARK: - Initialization
 
     /// Load the conjugation model from a directory path.
     ///
-    /// - Parameter path: Absolute path to the directory containing
-    ///   `model.json` and `weights.bin`.
+    /// - Parameters:
+    ///   - path: Absolute path to the directory containing
+    ///     `model.json` and `weights.bin`.
+    ///   - cacheSize: Maximum number of verbs to keep in the LRU
+    ///     cache.  Pass `0` to disable caching.  Defaults to
+    ///     ``defaultCacheSize`` (64).
     /// - Throws: ``ConjugationError/modelLoadFailed(path:)`` if loading fails.
-    public init(modelDirectory path: String) throws {
+    public init(modelDirectory path: String, cacheSize: Int = defaultCacheSize) throws {
         let url = URL(fileURLWithPath: path, isDirectory: true)
         self.engine = try InferenceEngine(modelDirectory: url)
+        self.cache = VerbCache(capacity: cacheSize)
     }
 
     /// Load the conjugation model from a directory URL.
-    public convenience init(modelDirectory url: URL) throws {
-        try self.init(modelDirectory: url.path)
+    ///
+    /// - Parameters:
+    ///   - url: File URL to the model directory.
+    ///   - cacheSize: Maximum number of verbs to cache (default: ``defaultCacheSize``).
+    public convenience init(modelDirectory url: URL, cacheSize: Int = defaultCacheSize) throws {
+        try self.init(modelDirectory: url.path, cacheSize: cacheSize)
     }
 
     /// Load the conjugation model from the bundled resources.
-    public convenience init() throws {
+    ///
+    /// - Parameter cacheSize: Maximum number of verbs to cache
+    ///   (default: ``defaultCacheSize``).
+    public convenience init(cacheSize: Int = defaultCacheSize) throws {
         let bundle = Self.resourceBundle
         guard let jsonURL = bundle.url(forResource: "model", withExtension: "json"),
               let _ = bundle.url(forResource: "weights", withExtension: "bin") else {
             throw ConjugationError.modelLoadFailed(path: "bundled resources")
         }
         let dir = jsonURL.deletingLastPathComponent()
-        try self.init(modelDirectory: dir)
+        try self.init(modelDirectory: dir, cacheSize: cacheSize)
     }
 
     private static var resourceBundle: Bundle {
@@ -119,6 +179,27 @@ public final class Conjugator: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return engine.knownVerbs.count
+    }
+
+    /// The maximum number of verbs the LRU cache can hold.
+    ///
+    /// Returns `0` if caching is disabled.
+    public var cacheCapacity: Int {
+        cache.capacity
+    }
+
+    /// The number of verbs currently held in the cache.
+    public var cacheCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return cache.count
+    }
+
+    /// Remove all entries from the prediction cache.
+    public func clearCache() {
+        lock.lock()
+        defer { lock.unlock() }
+        cache.removeAll()
     }
 
     // MARK: - Queries
@@ -188,6 +269,35 @@ public final class Conjugator: @unchecked Sendable {
         return persons.compactMap { Person(rawValue: $0) }
     }
 
+    // MARK: - Private Cache Helper
+
+    /// Predict a single form, reading from / writing to the LRU cache.
+    ///
+    /// **Must be called while `lock` is held.**
+    private func cachedPredict(
+        infinitive: String,
+        voice: String,
+        mode: String,
+        tense: String,
+        person: String
+    ) -> String? {
+        let formKey = "\(voice)|\(mode)|\(tense)|\(person)"
+        if let hit = cache.get(verb: infinitive, formKey: formKey) {
+            return hit
+        }
+        guard let result = engine.predict(
+            infinitive: infinitive,
+            voice: voice,
+            mode: mode,
+            tense: tense,
+            person: person
+        ) else {
+            return nil
+        }
+        cache.set(verb: infinitive, formKey: formKey, value: result)
+        return result
+    }
+
     // MARK: - Conjugation (Single Form)
 
     /// Conjugate a single form.
@@ -215,7 +325,7 @@ public final class Conjugator: @unchecked Sendable {
             return nil
         }
 
-        return engine.predict(
+        return cachedPredict(
             infinitive: infinitive,
             voice: voice.rawValue,
             mode: mode.rawValue,
@@ -243,7 +353,7 @@ public final class Conjugator: @unchecked Sendable {
         var result = [Person: String](minimumCapacity: personKeys.count)
         for pKey in personKeys {
             guard let person = Person(rawValue: pKey) else { continue }
-            if let form = engine.predict(
+            if let form = cachedPredict(
                 infinitive: infinitive,
                 voice: voice.rawValue,
                 mode: mode.rawValue,
@@ -277,7 +387,7 @@ public final class Conjugator: @unchecked Sendable {
             var tenseResult = [Person: String](minimumCapacity: personKeys.count)
             for pKey in personKeys {
                 guard let person = Person(rawValue: pKey) else { continue }
-                if let form = engine.predict(
+                if let form = cachedPredict(
                     infinitive: infinitive,
                     voice: voice.rawValue,
                     mode: mode.rawValue,
@@ -317,7 +427,7 @@ public final class Conjugator: @unchecked Sendable {
                 var tenseResult = [Person: String](minimumCapacity: personKeys.count)
                 for pKey in personKeys {
                     guard let person = Person(rawValue: pKey) else { continue }
-                    if let form = engine.predict(
+                    if let form = cachedPredict(
                         infinitive: infinitive,
                         voice: voice.rawValue,
                         mode: modeKey,
@@ -364,7 +474,7 @@ public final class Conjugator: @unchecked Sendable {
                     var tenseResult = [Person: String](minimumCapacity: personKeys.count)
                     for pKey in personKeys {
                         guard let person = Person(rawValue: pKey) else { continue }
-                        if let form = engine.predict(
+                        if let form = cachedPredict(
                             infinitive: infinitive,
                             voice: voiceKey,
                             mode: modeKey,
@@ -418,7 +528,7 @@ public final class Conjugator: @unchecked Sendable {
               persons.contains("-") else {
             return nil
         }
-        return engine.predict(
+        return cachedPredict(
             infinitive: infinitive,
             voice: voice.rawValue,
             mode: "participe",
@@ -447,7 +557,7 @@ public final class Conjugator: @unchecked Sendable {
         for (tenseKey, personKeys) in tenseMap {
             guard let tense = Tense(rawValue: tenseKey),
                   personKeys.contains("-") else { continue }
-            if let form = engine.predict(
+            if let form = cachedPredict(
                 infinitive: infinitive,
                 voice: voice.rawValue,
                 mode: "participe",
@@ -478,12 +588,16 @@ public final class Conjugator: @unchecked Sendable {
     // MARK: - Async Initialization
 
     /// Asynchronously load the conjugation model from a directory path.
+    ///
+    /// - Parameters:
+    ///   - path: Absolute path to the model directory.
+    ///   - cacheSize: Maximum number of verbs to cache (default: ``defaultCacheSize``).
     @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
-    public static func load(modelDirectory path: String) async throws -> Conjugator {
+    public static func load(modelDirectory path: String, cacheSize: Int = defaultCacheSize) async throws -> Conjugator {
         try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
-                    let conjugator = try Conjugator(modelDirectory: path)
+                    let conjugator = try Conjugator(modelDirectory: path, cacheSize: cacheSize)
                     continuation.resume(returning: conjugator)
                 } catch {
                     continuation.resume(throwing: error)
@@ -493,18 +607,24 @@ public final class Conjugator: @unchecked Sendable {
     }
 
     /// Asynchronously load the conjugation model from a directory URL.
+    ///
+    /// - Parameters:
+    ///   - url: File URL to the model directory.
+    ///   - cacheSize: Maximum number of verbs to cache (default: ``defaultCacheSize``).
     @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
-    public static func load(modelDirectory url: URL) async throws -> Conjugator {
-        try await load(modelDirectory: url.path)
+    public static func load(modelDirectory url: URL, cacheSize: Int = defaultCacheSize) async throws -> Conjugator {
+        try await load(modelDirectory: url.path, cacheSize: cacheSize)
     }
 
     /// Asynchronously load the conjugation model from bundled resources.
+    ///
+    /// - Parameter cacheSize: Maximum number of verbs to cache (default: ``defaultCacheSize``).
     @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
-    public static func load() async throws -> Conjugator {
+    public static func load(cacheSize: Int = defaultCacheSize) async throws -> Conjugator {
         try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
-                    let conjugator = try Conjugator()
+                    let conjugator = try Conjugator(cacheSize: cacheSize)
                     continuation.resume(returning: conjugator)
                 } catch {
                     continuation.resume(throwing: error)

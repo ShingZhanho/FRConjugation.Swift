@@ -75,7 +75,8 @@ def export(checkpoint_path, output_dir):
         "h_aspire": sorted(cp.get("h_aspire", [])),
         "reform_1990_verbs": sorted(cp.get("reform_1990_verbs", [])),
         "reform_variantes": cp.get("reform_variantes", {}),
-        "verb_structure": cp.get("verb_structure", {}),
+        "verb_structure_templates": cp.get("verb_structure_templates", []),
+        "verb_structure_ids": cp.get("verb_structure_ids", {}),
         "weight_manifest": manifest,
     }
 

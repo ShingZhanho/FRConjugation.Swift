@@ -11,6 +11,7 @@ conjugated form. All voices, tenses (simple and compound), and participle
 forms from the database are included in training data.
 """
 
+import json
 import os
 import random
 import sqlite3
@@ -41,7 +42,7 @@ from french_conjugation_model import (
 # -- Device ----------------------------------------------------------------
 
 if torch.backends.mps.is_available():
-    DEVICE = torch.device("mps")
+    DEVICE = torch.device("cpu")
 elif torch.cuda.is_available():
     DEVICE = torch.device("cuda")
 else:
@@ -731,8 +732,24 @@ def train():
         "h_aspire": metadata["h_aspire"],
         "reform_1990_verbs": metadata["reform_1990_verbs"],
         "reform_variantes": metadata["reform_variantes"],
-        "verb_structure": metadata["verb_structure"],
     }
+
+    # Compress verb_structure: deduplicate identical templates
+    _vs = metadata["verb_structure"]
+    _tmpl_map = {}  # canonical JSON -> template_id
+    _verb_tid = {}  # verb -> template_id
+    for _verb, _struct in _vs.items():
+        _key = json.dumps(_struct, sort_keys=True)
+        if _key not in _tmpl_map:
+            _tmpl_map[_key] = len(_tmpl_map)
+        _verb_tid[_verb] = _tmpl_map[_key]
+    _templates = [None] * len(_tmpl_map)
+    for _key, _tid in _tmpl_map.items():
+        _templates[_tid] = json.loads(_key)
+    checkpoint["verb_structure_templates"] = _templates
+    checkpoint["verb_structure_ids"] = _verb_tid
+    print(f"   verb_structure: {len(_vs)} verbs -> {len(_templates)} unique templates")
+
     torch.save(checkpoint, MODEL_PATH)
     size_mb = os.path.getsize(MODEL_PATH) / (1024 * 1024)
     print(f"   Model size : {size_mb:.1f} MB")

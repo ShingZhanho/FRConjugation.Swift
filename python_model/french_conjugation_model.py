@@ -272,7 +272,15 @@ class ConjugationModel:
         self._reform_variantes = checkpoint.get("reform_variantes", {})
 
         # structure: {verb: {voice: {mode: {tense: [person_keys]}}}}
-        self._verb_structure = checkpoint.get("verb_structure", {})
+        # Supports both compressed (templates + ids) and legacy flat format
+        if "verb_structure_templates" in checkpoint:
+            templates = checkpoint["verb_structure_templates"]
+            ids = checkpoint["verb_structure_ids"]
+            self._verb_structure = {
+                verb: templates[tid] for verb, tid in ids.items()
+            }
+        else:
+            self._verb_structure = checkpoint.get("verb_structure", {})
 
         hp = checkpoint["hyperparams"]
         self._model = Seq2SeqModel(

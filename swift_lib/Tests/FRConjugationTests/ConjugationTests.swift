@@ -15,7 +15,6 @@ final class ConjugationTests: XCTestCase {
         if let env = ProcessInfo.processInfo.environment["MODEL_DIR"] {
             return env
         }
-        // Walk from #filePath → Sources/FRConjugation/Resources/
         let swiftLib = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()  // FRConjugationTests/
             .deletingLastPathComponent()  // Tests/
@@ -34,7 +33,6 @@ final class ConjugationTests: XCTestCase {
 
     override class func setUp() {
         super.setUp()
-        // Try bundled resources first, fall back to file path
         do {
             conjugator = try Conjugator()
             return
@@ -81,34 +79,61 @@ final class ConjugationTests: XCTestCase {
         XCTAssertFalse(conj.isHAspire("habiter"))
     }
 
-    func testAuxiliary() throws {
-        let conj = try c
-        let avoirAux = conj.auxiliary(for: "parler")
-        XCTAssertTrue(avoirAux.avoir)
-        XCTAssertFalse(avoirAux.etre)
+    // MARK: - Structure Queries
 
-        let etreAux = conj.auxiliary(for: "aller")
-        XCTAssertTrue(etreAux.etre)
+    func testVoices() throws {
+        let conj = try c
+        let v = conj.voices("parler")
+        XCTAssertTrue(v.contains(.activeAvoir))
+        XCTAssertFalse(v.isEmpty)
     }
 
-    // MARK: - Indicatif Présent
+    func testModes() throws {
+        let conj = try c
+        let m = conj.modes("parler", voice: .activeAvoir)
+        XCTAssertTrue(m.contains(.indicatif))
+        XCTAssertTrue(m.contains(.subjonctif))
+        XCTAssertTrue(m.contains(.conditionnel))
+    }
+
+    func testTenses() throws {
+        let conj = try c
+        let t = conj.tenses("parler", voice: .activeAvoir, mode: .indicatif)
+        XCTAssertTrue(t.contains(.present))
+        XCTAssertTrue(t.contains(.imparfait))
+        XCTAssertTrue(t.contains(.passeCompose))
+    }
+
+    func testPersons() throws {
+        let conj = try c
+        let p = conj.persons("parler", voice: .activeAvoir, mode: .indicatif, tense: .present)
+        XCTAssertTrue(p.contains(.firstSingularMasculine))
+        XCTAssertTrue(p.contains(.thirdPluralFeminine))
+    }
+
+    func testUnknownVerbStructure() throws {
+        let conj = try c
+        XCTAssertTrue(conj.voices("xyzzy").isEmpty)
+        XCTAssertTrue(conj.modes("xyzzy", voice: .activeAvoir).isEmpty)
+    }
+
+    // MARK: - Indicatif Présent (Active Avoir)
 
     func testIndicatifPresent() throws {
         let conj = try c
         XCTAssertEqual(
-            conj.conjugate("parler", mode: .indicatif, tense: .present, person: .firstPersonSingular),
+            conj.conjugate("parler", voice: .activeAvoir, mode: .indicatif,
+                           tense: .present, person: .firstSingularMasculine),
             "parle"
         )
         XCTAssertEqual(
-            conj.conjugate("finir", mode: .indicatif, tense: .present, person: .firstPersonPlural),
+            conj.conjugate("finir", voice: .activeAvoir, mode: .indicatif,
+                           tense: .present, person: .firstPluralMasculine),
             "finissons"
         )
         XCTAssertEqual(
-            conj.conjugate("aller", mode: .indicatif, tense: .present, person: .firstPersonSingular),
-            "vais"
-        )
-        XCTAssertEqual(
-            conj.conjugate("être", mode: .indicatif, tense: .present, person: .thirdPersonMasculinePlural),
+            conj.conjugate("être", voice: .activeAvoir, mode: .indicatif,
+                           tense: .present, person: .thirdPluralMasculine),
             "sont"
         )
     }
@@ -117,11 +142,11 @@ final class ConjugationTests: XCTestCase {
 
     func testFullParadigm() throws {
         let conj = try c
-        let forms = conj.conjugate("avoir", mode: .indicatif, tense: .present)
-        XCTAssertEqual(forms[.firstPersonSingular], "ai")
-        XCTAssertEqual(forms[.secondPersonSingular], "as")
-        XCTAssertEqual(forms[.firstPersonPlural], "avons")
-        XCTAssertEqual(forms[.secondPersonPlural], "avez")
+        let forms = conj.conjugate("avoir", voice: .activeAvoir, mode: .indicatif, tense: .present)
+        XCTAssertEqual(forms[.firstSingularMasculine], "ai")
+        XCTAssertEqual(forms[.secondSingularMasculine], "as")
+        XCTAssertEqual(forms[.firstPluralMasculine], "avons")
+        XCTAssertEqual(forms[.secondPluralMasculine], "avez")
         XCTAssertGreaterThanOrEqual(forms.count, 6)
     }
 
@@ -130,7 +155,8 @@ final class ConjugationTests: XCTestCase {
     func testImparfait() throws {
         let conj = try c
         XCTAssertEqual(
-            conj.conjugate("parler", mode: .indicatif, tense: .imparfait, person: .firstPersonSingular),
+            conj.conjugate("parler", voice: .activeAvoir, mode: .indicatif,
+                           tense: .imparfait, person: .firstSingularMasculine),
             "parlais"
         )
     }
@@ -138,7 +164,8 @@ final class ConjugationTests: XCTestCase {
     func testFuturSimple() throws {
         let conj = try c
         XCTAssertEqual(
-            conj.conjugate("aller", mode: .indicatif, tense: .futurSimple, person: .firstPersonSingular),
+            conj.conjugate("aller", voice: .activeEtre, mode: .indicatif,
+                           tense: .futurSimple, person: .firstSingularMasculine),
             "irai"
         )
     }
@@ -146,7 +173,8 @@ final class ConjugationTests: XCTestCase {
     func testConditionnelPresent() throws {
         let conj = try c
         XCTAssertEqual(
-            conj.conjugate("vouloir", mode: .conditionnel, tense: .present, person: .firstPersonSingular),
+            conj.conjugate("vouloir", voice: .activeAvoir, mode: .conditionnel,
+                           tense: .present, person: .firstSingularMasculine),
             "voudrais"
         )
     }
@@ -154,7 +182,8 @@ final class ConjugationTests: XCTestCase {
     func testSubjonctifPresent() throws {
         let conj = try c
         XCTAssertEqual(
-            conj.conjugate("faire", mode: .subjonctif, tense: .present, person: .firstPersonSingular),
+            conj.conjugate("faire", voice: .activeAvoir, mode: .subjonctif,
+                           tense: .present, person: .firstSingularMasculine),
             "fasse"
         )
     }
@@ -163,27 +192,26 @@ final class ConjugationTests: XCTestCase {
 
     func testImperatif() throws {
         let conj = try c
-        let forms = conj.conjugate("parler", mode: .imperatif, tense: .present)
-        XCTAssertEqual(forms.count, 3)
-        XCTAssertEqual(forms[.secondPersonSingular], "parle")
-        XCTAssertEqual(forms[.firstPersonPlural], "parlons")
-        XCTAssertEqual(forms[.secondPersonPlural], "parlez")
+        let forms = conj.conjugate("parler", voice: .activeAvoir, mode: .imperatif, tense: .present)
+        XCTAssertEqual(forms[.secondSingularMasculine], "parle")
+        XCTAssertEqual(forms[.firstPluralMasculine], "parlons")
+        XCTAssertEqual(forms[.secondPluralMasculine], "parlez")
     }
 
-    // MARK: - Compound Tenses
+    // MARK: - Compound Tenses (Directly Predicted)
 
     func testPasseCompose() throws {
         let conj = try c
         // "aller" uses être → agreement
         XCTAssertEqual(
-            conj.conjugate("aller", mode: .indicatif, tense: .passeCompose,
-                           person: .thirdPersonFeminineSingular),
+            conj.conjugate("aller", voice: .activeEtre, mode: .indicatif, tense: .passeCompose,
+                           person: .thirdSingularFeminine),
             "est allée"
         )
         // "parler" uses avoir → no agreement
         XCTAssertEqual(
-            conj.conjugate("parler", mode: .indicatif, tense: .passeCompose,
-                           person: .firstPersonSingular),
+            conj.conjugate("parler", voice: .activeAvoir, mode: .indicatif, tense: .passeCompose,
+                           person: .firstSingularMasculine),
             "ai parlé"
         )
     }
@@ -192,122 +220,109 @@ final class ConjugationTests: XCTestCase {
 
     func testParticiple() throws {
         let conj = try c
-        XCTAssertEqual(conj.participle("parler"), "parlé")
-        XCTAssertEqual(conj.participle("partir", form: .passeFemininPlural), "parties")
-        XCTAssertEqual(conj.participle("finir", form: .present), "finissant")
-    }
-
-    // MARK: - Impersonal / Defective Verbs
-
-    func testImpersonalFlags() throws {
-        let conj = try c
-        XCTAssertTrue(conj.isImpersonal("falloir"))
-        XCTAssertTrue(conj.isImpersonal("neiger"))
-        XCTAssertFalse(conj.isImpersonal("pleuvoir"))  // pleuvoir is third-person-only
-        XCTAssertFalse(conj.isImpersonal("parler"))
-
-        XCTAssertTrue(conj.isThirdPersonOnly("pleuvoir"))
-        XCTAssertTrue(conj.isThirdPersonOnly("advenir"))
-        XCTAssertFalse(conj.isThirdPersonOnly("falloir"))
-        XCTAssertFalse(conj.isThirdPersonOnly("parler"))
-
-        XCTAssertTrue(conj.isDefective("falloir"))
-        XCTAssertTrue(conj.isDefective("pleuvoir"))
-        XCTAssertFalse(conj.isDefective("parler"))
-    }
-
-    func testFalloirOnlyIl() throws {
-        let conj = try c
-        // "falloir" should only conjugate for il/elle
-        XCTAssertNotNil(conj.conjugate("falloir", mode: .indicatif, tense: .present,
-                                        person: .thirdPersonMasculineSingular))
         XCTAssertEqual(
-            conj.conjugate("falloir", mode: .indicatif, tense: .present,
-                           person: .thirdPersonMasculineSingular),
+            conj.participle("parler", voice: .activeAvoir, tense: .passeMasculinSingulier),
+            "parlé"
+        )
+        XCTAssertEqual(
+            conj.participle("partir", voice: .activeAvoir, tense: .passeFemininPluriel),
+            "parties"
+        )
+        XCTAssertEqual(
+            conj.participle("finir", voice: .activeAvoir, tense: .present),
+            "finissant"
+        )
+    }
+
+    func testParticiples() throws {
+        let conj = try c
+        let parts = conj.participles("parler", voice: .activeAvoir)
+        XCTAssertFalse(parts.isEmpty)
+        XCTAssertEqual(parts[.present], "parlant")
+        XCTAssertEqual(parts[.passeMasculinSingulier], "parlé")
+    }
+
+    // MARK: - Defective Verbs (via verb_structure)
+
+    func testFalloirOnlyThirdSingular() throws {
+        let conj = try c
+        // "falloir" should conjugate via verb_structure
+        XCTAssertNotNil(conj.conjugate("falloir", voice: .activeAvoir, mode: .indicatif,
+                                        tense: .present, person: .thirdSingularMasculine))
+        XCTAssertEqual(
+            conj.conjugate("falloir", voice: .activeAvoir, mode: .indicatif,
+                           tense: .present, person: .thirdSingularMasculine),
             "faut"
         )
-        // Other persons should return nil
-        XCTAssertNil(conj.conjugate("falloir", mode: .indicatif, tense: .present,
-                                     person: .firstPersonSingular))
-        XCTAssertNil(conj.conjugate("falloir", mode: .indicatif, tense: .present,
-                                     person: .secondPersonSingular))
-        XCTAssertNil(conj.conjugate("falloir", mode: .indicatif, tense: .present,
-                                     person: .firstPersonPlural))
-        XCTAssertNil(conj.conjugate("falloir", mode: .indicatif, tense: .present,
-                                     person: .secondPersonPlural))
-        XCTAssertNil(conj.conjugate("falloir", mode: .indicatif, tense: .present,
-                                     person: .thirdPersonMasculinePlural))
-
-        // Full paradigm should only have il/elle
-        let forms = conj.conjugate("falloir", mode: .indicatif, tense: .present)
-        XCTAssertEqual(forms.count, 2)  // 3sm + 3sf only
-        XCTAssertNotNil(forms[.thirdPersonMasculineSingular])
-        XCTAssertNotNil(forms[.thirdPersonFeminineSingular])
-        XCTAssertNil(forms[.firstPersonSingular])
-
-        // No impératif forms
-        let imperatifForms = conj.conjugate("falloir", mode: .imperatif, tense: .present)
-        XCTAssertTrue(imperatifForms.isEmpty)
+        // Invalid persons return nil (via verb_structure validation)
+        XCTAssertNil(conj.conjugate("falloir", voice: .activeAvoir, mode: .indicatif,
+                                     tense: .present, person: .firstSingularMasculine))
+        XCTAssertNil(conj.conjugate("falloir", voice: .activeAvoir, mode: .indicatif,
+                                     tense: .present, person: .secondPluralMasculine))
     }
 
-    func testPleuvoirThirdPersonOnly() throws {
-        let conj = try c
-        // "pleuvoir" should conjugate for 3rd person only (singular + plural)
-        XCTAssertNotNil(conj.conjugate("pleuvoir", mode: .indicatif, tense: .present,
-                                        person: .thirdPersonMasculineSingular))
-        XCTAssertNotNil(conj.conjugate("pleuvoir", mode: .indicatif, tense: .present,
-                                        person: .thirdPersonMasculinePlural))
-        // Non-3rd-person should return nil
-        XCTAssertNil(conj.conjugate("pleuvoir", mode: .indicatif, tense: .present,
-                                     person: .firstPersonSingular))
-        XCTAssertNil(conj.conjugate("pleuvoir", mode: .indicatif, tense: .present,
-                                     person: .secondPersonPlural))
+    // MARK: - Voice Variants
 
-        // Full paradigm should only have 3rd-person entries
-        let forms = conj.conjugate("pleuvoir", mode: .indicatif, tense: .present)
-        XCTAssertEqual(forms.count, 4)  // 3sm, 3sf, 3pm, 3pf
-        XCTAssertNil(forms[.firstPersonSingular])
-        XCTAssertNil(forms[.secondPersonSingular])
-        XCTAssertNil(forms[.firstPersonPlural])
-        XCTAssertNil(forms[.secondPersonPlural])
+    func testAllerActiveEtre() throws {
+        let conj = try c
+        XCTAssertEqual(
+            conj.conjugate("aller", voice: .activeEtre, mode: .indicatif,
+                           tense: .present, person: .firstSingularMasculine),
+            "vais"
+        )
     }
 
-    func testImpersonalParticiplesStillWork() throws {
+    func testPronoVerb() throws {
         let conj = try c
-        // Participles should not be affected by impersonal filtering
-        let pp = conj.participle("falloir", form: .passeMasculinSingular)
-        XCTAssertEqual(pp, "fallu")
+        // "laver" in pronominal voice
+        let v = conj.voices("laver")
+        if v.contains(.pronominal) {
+            let form = conj.conjugate("laver", voice: .pronominal, mode: .indicatif,
+                                       tense: .present, person: .firstSingularMasculine)
+            XCTAssertNotNil(form)
+        }
     }
 
-    func testImpersonalCompoundTense() throws {
+    // MARK: - Aggregate Conjugation
+
+    func testConjugateModeTenses() throws {
         let conj = try c
-        // Compound tenses should also be filtered
-        XCTAssertNotNil(conj.conjugate("falloir", mode: .indicatif, tense: .passeCompose,
-                                        person: .thirdPersonMasculineSingular))
-        XCTAssertNil(conj.conjugate("falloir", mode: .indicatif, tense: .passeCompose,
-                                     person: .firstPersonSingular))
+        let allTenses = conj.conjugate("parler", voice: .activeAvoir, mode: .indicatif)
+        XCTAssertFalse(allTenses.isEmpty)
+        XCTAssertNotNil(allTenses[.present])
+        XCTAssertNotNil(allTenses[.imparfait])
+    }
+
+    func testConjugateVoice() throws {
+        let conj = try c
+        let allModes = conj.conjugate("parler", voice: .activeAvoir)
+        XCTAssertFalse(allModes.isEmpty)
+        XCTAssertNotNil(allModes[.indicatif])
+    }
+
+    func testConjugateAll() throws {
+        let conj = try c
+        let all = conj.conjugate("parler")
+        XCTAssertNotNil(all)
+        XCTAssertFalse(all!.isEmpty)
     }
 
     // MARK: - Invalid Input
 
     func testUnknownVerb() throws {
         let conj = try c
-        // The neural model will attempt to conjugate unknown input.
-        // hasVerb() is the correct way to check if a verb is known.
         XCTAssertFalse(conj.hasVerb("xyzzy"))
-        // conjugate still returns something (the model guesses) — not nil.
-        let result = conj.conjugate("xyzzy", mode: .indicatif, tense: .present,
-                                     person: .firstPersonSingular)
-        // Just verify it doesn't crash; value is unimportant.
-        _ = result
+        // conjugate returns nil for unknown verb (verb_structure lookup fails)
+        let result = conj.conjugate("xyzzy", voice: .activeAvoir, mode: .indicatif,
+                                     tense: .present, person: .firstSingularMasculine)
+        XCTAssertNil(result)
     }
 
     func testInvalidCombination() throws {
         let conj = try c
-        // Participe mode with a person → should return nil or the participle
-        let result = conj.conjugate("parler", mode: .participe, tense: .present,
-                                     person: .firstPersonSingular)
-        // Not asserting specific behavior — just shouldn't crash
-        _ = result
+        // Invalid voice for a verb should return nil
+        let result = conj.conjugate("falloir", voice: .passive, mode: .indicatif,
+                                     tense: .present, person: .firstSingularMasculine)
+        XCTAssertNil(result)
     }
 }

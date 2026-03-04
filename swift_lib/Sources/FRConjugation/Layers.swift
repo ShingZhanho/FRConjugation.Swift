@@ -244,10 +244,11 @@ struct DecoderLayer {
 /// Bridge layer: maps encoder hidden + conditioning embeddings → decoder
 /// initial hidden state.
 ///
-/// h_dec0 = tanh(W_bridge @ [enc_hidden ; mode_emb ; tense_emb ; person_emb] + b_bridge)
+/// h_dec0 = tanh(W_bridge @ [enc_hidden ; voice_emb ; mode_emb ; tense_emb ; person_emb] + b_bridge)
 struct BridgeLayer {
-    let weight: Tensor    // [hiddenDim, encHidden + 3*condDim]
+    let weight: Tensor    // [hiddenDim, encHidden + 4*condDim]
     let bias: Tensor      // [hiddenDim]
+    let voiceEmb: Tensor  // [nVoices, condDim]
     let modeEmb: Tensor   // [nModes, condDim]
     let tenseEmb: Tensor  // [nTenses, condDim]
     let personEmb: Tensor // [nPersons, condDim]
@@ -256,16 +257,19 @@ struct BridgeLayer {
     /// Compute decoder initial hidden state.
     func initDecoder(
         encoderHidden: Tensor,
+        voiceIdx: Int,
         modeIdx: Int,
         tenseIdx: Int,
         personIdx: Int
     ) -> Tensor {
+        let vSlice = Array(voiceEmb.data[voiceIdx * condDim..<(voiceIdx + 1) * condDim])
         let mSlice = Array(modeEmb.data[modeIdx * condDim..<(modeIdx + 1) * condDim])
         let tSlice = Array(tenseEmb.data[tenseIdx * condDim..<(tenseIdx + 1) * condDim])
         let pSlice = Array(personEmb.data[personIdx * condDim..<(personIdx + 1) * condDim])
 
         let input = Tensor.cat([
             encoderHidden,
+            Tensor.vector(vSlice),
             Tensor.vector(mSlice),
             Tensor.vector(tSlice),
             Tensor.vector(pSlice),

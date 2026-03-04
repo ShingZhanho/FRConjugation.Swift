@@ -2,6 +2,9 @@
 //
 // Reads the model.json + weights.bin files produced by export_weights.py
 // and builds the neural network layers for pure-Swift inference.
+//
+// v2: voice as 4th conditioning axis, verb_structure for valid combos,
+//     compound tenses predicted directly by the model.
 
 import Foundation
 
@@ -22,6 +25,7 @@ final class InferenceEngine: @unchecked Sendable {
 
     let charToIdx: [Character: Int]
     let idxToChar: [Int: Character]
+    let voiceToIdx: [String: Int]
     let modeToIdx: [String: Int]
     let tenseToIdx: [String: Int]
     let personToIdx: [String: Int]
@@ -29,13 +33,13 @@ final class InferenceEngine: @unchecked Sendable {
     // ── Metadata ─────────────────────────────────────────────────────────
 
     let exceptions: [String: String]
-    let etreVerbs: Set<String>
-    let pronoVerbs: Set<String>
-    let hAspire: Set<String>
     let knownVerbs: Set<String>
-    let invariablePPVerbs: Set<String>
-    let impersonalVerbs: Set<String>
-    let thirdPersonOnlyVerbs: Set<String>
+    let hAspire: Set<String>
+    let reform1990Verbs: Set<String>
+    let reformVariantes: [String: String]
+
+    /// Verb structure: verb → { voice → { mode → { tense → [person] } } }
+    let verbStructure: [String: [String: [String: [String: [String]]]]]
 
     // ── Layers ───────────────────────────────────────────────────────────
 
@@ -66,11 +70,9 @@ final class InferenceEngine: @unchecked Sendable {
             throw ConjugationError.modelLoadFailed(path: directory.path)
         }
 
-        let vocabSize = hp["vocab_size"]!
         let embDim = hp["emb_dim"]!
         let hiddenDim = hp["hidden_dim"]!
         let condDim = hp["cond_dim"]!
-        _ = vocabSize  // suppress unused warning
 
         // ── Parse vocabulary ─────────────────────────────────────────────
         let c2i = vocabDict["char_to_idx"] as! [String: Int]
@@ -91,19 +93,42 @@ final class InferenceEngine: @unchecked Sendable {
         }
         self.idxToChar = idxToChar
 
+        self.voiceToIdx = vocabDict["voice_to_idx"] as! [String: Int]
         self.modeToIdx = vocabDict["mode_to_idx"] as! [String: Int]
         self.tenseToIdx = vocabDict["tense_to_idx"] as! [String: Int]
         self.personToIdx = vocabDict["person_to_idx"] as! [String: Int]
 
-        // ── Parse metadata sets ──────────────────────────────────────────
+        // ── Parse metadata ───────────────────────────────────────────────
         self.exceptions = (root["exceptions"] as? [String: String]) ?? [:]
-        self.etreVerbs = Set((root["etre_verbs"] as? [String]) ?? [])
-        self.pronoVerbs = Set((root["prono_verbs"] as? [String]) ?? [])
-        self.hAspire = Set((root["h_aspire"] as? [String]) ?? [])
         self.knownVerbs = Set((root["known_verbs"] as? [String]) ?? [])
-        self.invariablePPVerbs = Set((root["invariable_pp_verbs"] as? [String]) ?? [])
-        self.impersonalVerbs = Set((root["impersonal_verbs"] as? [String]) ?? [])
-        self.thirdPersonOnlyVerbs = Set((root["third_person_only_verbs"] as? [String]) ?? [])
+        self.hAspire = Set((root["h_aspire"] as? [String]) ?? [])
+        self.reform1990Verbs = Set((root["reform_1990_verbs"] as? [String]) ?? [])
+        self.reformVariantes = (root["reform_variantes"] as? [String: String]) ?? [:]
+
+        // ── Reconstruct verb_structure from templates + ids ──────────────
+        typealias VerbStruct = [String: [String: [String: [String]]]]
+        let rawTemplates = (root["verb_structure_templates"] as? [Any]) ?? []
+        let rawIds = (root["verb_structure_ids"] as? [String: Int]) ?? [:]
+
+        // Parse templates
+        var templates = [VerbStruct]()
+        templates.reserveCapacity(rawTemplates.count)
+        for rawT in rawTemplates {
+            if let t = rawT as? [String: [String: [String: [String]]]] {
+                templates.append(t)
+            } else {
+                templates.append([:])
+            }
+        }
+
+        // Map verb → template
+        var verbStructure = [String: VerbStruct](minimumCapacity: rawIds.count)
+        for (verb, tid) in rawIds {
+            if tid < templates.count {
+                verbStructure[verb] = templates[tid]
+            }
+        }
+        self.verbStructure = verbStructure
 
         // ── Load binary weights ──────────────────────────────────────────
         let binData = try Data(contentsOf: binURL)
@@ -165,10 +190,11 @@ final class InferenceEngine: @unchecked Sendable {
             embDim: embDim
         )
 
-        // ── Build Bridge ─────────────────────────────────────────────────
+        // ── Build Bridge (now with voice embedding) ─────────────────────
         self.bridge = BridgeLayer(
             weight: loadTensor("bridge.weight"),
             bias: loadTensor("bridge.bias"),
+            voiceEmb: loadTensor("voice_emb.weight"),
             modeEmb: loadTensor("mode_emb.weight"),
             tenseEmb: loadTensor("tense_emb.weight"),
             personEmb: loadTensor("person_emb.weight"),
@@ -178,19 +204,20 @@ final class InferenceEngine: @unchecked Sendable {
 
     // MARK: - Prediction
 
-    /// Run a single neural prediction: infinitive + mode/tense/person → conjugated form.
+    /// Run a single neural prediction: infinitive + voice/mode/tense/person → conjugated form.
     ///
     /// Checks the exception table first, then falls back to greedy decoding.
     ///
     /// - Returns: The predicted string, or `nil` if any character is out of vocabulary.
     func predict(
         infinitive: String,
+        voice: String,
         mode: String,
         tense: String,
         person: String
     ) -> String? {
-        // Check exception table
-        let excKey = "\(infinitive)|\(mode)|\(tense)|\(person)"
+        // Check exception table (v2 key includes voice)
+        let excKey = "\(infinitive)|\(voice)|\(mode)|\(tense)|\(person)"
         if let exc = exceptions[excKey] {
             return exc
         }
@@ -203,6 +230,7 @@ final class InferenceEngine: @unchecked Sendable {
         }
         charIds.append(EOS_IDX)
 
+        let voiceIdx = voiceToIdx[voice] ?? 0
         let modeIdx = modeToIdx[mode] ?? 0
         let tenseIdx = tenseToIdx[tense] ?? 0
         let personIdx = personToIdx[person] ?? 0
@@ -210,9 +238,10 @@ final class InferenceEngine: @unchecked Sendable {
         // Encode
         let (encOutputs, encHidden) = encoder.encode(charIds)
 
-        // Bridge → initial decoder hidden
+        // Bridge → initial decoder hidden (now includes voice)
         var decHidden = bridge.initDecoder(
             encoderHidden: encHidden,
+            voiceIdx: voiceIdx,
             modeIdx: modeIdx,
             tenseIdx: tenseIdx,
             personIdx: personIdx

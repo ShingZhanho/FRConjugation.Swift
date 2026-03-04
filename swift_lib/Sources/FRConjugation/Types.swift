@@ -2,10 +2,30 @@
 
 import Foundation
 
+// MARK: - Voice
+
+/// French grammatical voice.
+///
+/// The database distinguishes five voices.  The vast majority of verbs
+/// use ``activeAvoir`` (transitive / intransitive with *avoir*).
+///
+///     Voice.activeAvoir      // il a mangé
+///     Voice.activeEtre       // il est allé
+///     Voice.active           // (rare) impersonal active
+///     Voice.passive          // il est mangé
+///     Voice.pronominal       // il se lave
+public enum Voice: String, CaseIterable, Sendable, Hashable {
+    case activeAvoir  = "voix_active_avoir"
+    case activeEtre   = "voix_active_etre"
+    case active       = "voix_active"
+    case passive      = "voix_passive"
+    case pronominal   = "voix_prono"
+}
+
 // MARK: - Mode
 
 /// French grammatical mode (mood).
-public enum Mode: String, CaseIterable, Sendable {
+public enum Mode: String, CaseIterable, Sendable, Hashable {
     case indicatif
     case subjonctif
     case conditionnel
@@ -17,111 +37,95 @@ public enum Mode: String, CaseIterable, Sendable {
 
 /// French verb tense.
 ///
-/// Not every tense is valid in every mode. Invalid combinations return `nil`.
+/// Not every tense is valid in every mode or voice.  Invalid
+/// combinations return `nil`.  Use ``Conjugator/tenses(_:voice:mode:)``
+/// to discover valid tenses for a given verb, voice and mode.
 ///
-/// ```
-/// Indicatif:     .present  .imparfait  .passeSimple  .futurSimple
-///                .passeCompose  .plusQueParfait  .passeAnterieur  .futurAnterieur
-/// Subjonctif:    .present  .imparfait  .passe  .plusQueParfait
-/// Conditionnel:  .present  .passe
-/// Impératif:     .present  .passe
-/// Participe:     .present  (passé forms via participle() method)
-/// ```
-public enum Tense: String, CaseIterable, Sendable {
-    // Simple tenses
+/// ## Simple tenses
+/// `.present`, `.imparfait`, `.passeSimple`, `.futurSimple`
+///
+/// ## Compound tenses
+/// `.passeCompose`, `.plusQueParfait`, `.passeAnterieur`,
+/// `.futurAnterieur`, `.passe`
+///
+/// ## Participle sub-forms (mode: `.participe`)
+/// `.passeMasculinSingulier`, `.passeFemininSingulier`,
+/// `.passeMasculinPluriel`,   `.passeFemininPluriel`,
+/// `.passeCompoundMasculinSingulier`, `.passeCompoundFemininSingulier`,
+/// `.passeCompoundMasculinPluriel`, `.passeCompoundFemininPluriel`
+public enum Tense: String, CaseIterable, Sendable, Hashable {
+    // Simple
     case present        = "present"
     case imparfait      = "imparfait"
     case passeSimple    = "passe_simple"
     case futurSimple    = "futur_simple"
 
-    // Compound tenses
-    case passeCompose   = "passe_compose"
-    case plusQueParfait  = "plus_que_parfait"
-    case passeAnterieur = "passe_anterieur"
-    case futurAnterieur = "futur_anterieur"
+    // Compound
+    case passeCompose       = "passe_compose"
+    case plusQueParfait      = "plus_que_parfait"
+    case passeAnterieur     = "passe_anterieur"
+    case futurAnterieur     = "futur_anterieur"
 
-    // Generic "passé" — used in conditionnel, subjonctif, impératif
-    case passe          = "passe"
+    // Generic passé (conditionnel, subjonctif, impératif)
+    case passe = "passe"
+
+    // Participle sub-forms (simple)
+    case passeMasculinSingulier = "passe_sm"
+    case passeFemininSingulier  = "passe_sf"
+    case passeMasculinPluriel   = "passe_pm"
+    case passeFemininPluriel    = "passe_pf"
+
+    // Participle sub-forms (compound)
+    case passeCompoundMasculinSingulier = "passe_compound_sm"
+    case passeCompoundFemininSingulier  = "passe_compound_sf"
+    case passeCompoundMasculinPluriel   = "passe_compound_pm"
+    case passeCompoundFemininPluriel    = "passe_compound_pf"
 }
 
 // MARK: - Person
 
-/// Grammatical person (with gender for third person).
+/// Grammatical person with gender.
 ///
-/// French conjugation distinguishes masculine/feminine in the third person,
-/// particularly for compound tenses with être auxiliary (past participle
-/// agreement).
+/// French conjugation distinguishes masculine and feminine forms for all
+/// persons (due to participle agreement in compound tenses).
+///
+/// The person keys follow the pattern `{number}{plurality}{gender}`:
+/// - Number: `1`, `2`, `3`
+/// - Plurality: `s` (singular), `p` (plural)
+/// - Gender: `m` (masculine), `f` (feminine)
 public enum Person: String, CaseIterable, Sendable, Hashable {
-    case firstPersonSingular  = "1s"
-    case secondPersonSingular = "2s"
-    case thirdPersonMasculineSingular = "3sm"
-    case thirdPersonFeminineSingular  = "3sf"
-    case firstPersonPlural    = "1p"
-    case secondPersonPlural   = "2p"
-    case thirdPersonMasculinePlural   = "3pm"
-    case thirdPersonFemininePlural    = "3pf"
+    case firstSingularMasculine   = "1sm"
+    case firstSingularFeminine    = "1sf"
+    case secondSingularMasculine  = "2sm"
+    case secondSingularFeminine   = "2sf"
+    case thirdSingularMasculine   = "3sm"
+    case thirdSingularFeminine    = "3sf"
+    case firstPluralMasculine     = "1pm"
+    case firstPluralFeminine      = "1pf"
+    case secondPluralMasculine    = "2pm"
+    case secondPluralFeminine     = "2pf"
+    case thirdPluralMasculine     = "3pm"
+    case thirdPluralFeminine      = "3pf"
 
     /// The French subject pronoun for this person.
     ///
-    ///     Person.firstPersonSingular.pronoun  // "je"
-    ///     Person.thirdPersonFemininePlural.pronoun  // "elles"
+    ///     Person.firstSingularMasculine.pronoun  // "je"
+    ///     Person.thirdPluralFeminine.pronoun      // "elles"
     public var pronoun: String {
         switch self {
-        case .firstPersonSingular:  return "je"
-        case .secondPersonSingular: return "tu"
-        case .thirdPersonMasculineSingular: return "il"
-        case .thirdPersonFeminineSingular:  return "elle"
-        case .firstPersonPlural:    return "nous"
-        case .secondPersonPlural:   return "vous"
-        case .thirdPersonMasculinePlural:   return "ils"
-        case .thirdPersonFemininePlural:    return "elles"
+        case .firstSingularMasculine, .firstSingularFeminine:   return "je"
+        case .secondSingularMasculine, .secondSingularFeminine: return "tu"
+        case .thirdSingularMasculine:  return "il"
+        case .thirdSingularFeminine:   return "elle"
+        case .firstPluralMasculine, .firstPluralFeminine:       return "nous"
+        case .secondPluralMasculine, .secondPluralFeminine:     return "vous"
+        case .thirdPluralMasculine:    return "ils"
+        case .thirdPluralFeminine:     return "elles"
         }
     }
 
-    /// Short label (e.g. "1s", "3pf").
+    /// Short label (e.g. "1sm", "3pf").
     public var shortLabel: String { rawValue }
-}
-
-// MARK: - Participle Form
-
-/// Past/present participle forms.
-///
-/// French past participles agree in gender and number with the subject
-/// when the auxiliary is "être".
-public enum ParticipleForm: String, CaseIterable, Sendable {
-    case present                = "present"
-    case passeMasculinSingular  = "passe_sm"
-    case passeFemininSingular   = "passe_sf"
-    case passeMasculinPlural    = "passe_pm"
-    case passeFemininPlural     = "passe_pf"
-}
-
-// MARK: - Auxiliary
-
-/// Auxiliary verb information for compound tenses.
-///
-///     let aux = conjugator.auxiliary(for: "aller")
-///     aux.etre        // true — "aller" uses être
-///     aux.avoir       // false
-///     aux.pronominal  // true — "s'en aller" exists
-public struct Auxiliary: Equatable, Hashable, Sendable, CustomStringConvertible {
-
-    /// Uses "avoir" as auxiliary.
-    public let avoir: Bool
-
-    /// Uses "être" as auxiliary.
-    public let etre: Bool
-
-    /// Has a pronominal (reflexive) form.
-    public let pronominal: Bool
-
-    public var description: String {
-        var parts: [String] = []
-        if avoir { parts.append("avoir") }
-        if etre  { parts.append("être") }
-        if pronominal { parts.append("pronominal") }
-        return parts.isEmpty ? "none" : parts.joined(separator: ", ")
-    }
 }
 
 // MARK: - Errors

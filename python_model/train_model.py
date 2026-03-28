@@ -42,7 +42,7 @@ from french_conjugation_model import (
 # -- Device ----------------------------------------------------------------
 
 if torch.backends.mps.is_available():
-    DEVICE = torch.device("cpu")
+    DEVICE = torch.device("mps")
 elif torch.cuda.is_available():
     DEVICE = torch.device("cuda")
 else:

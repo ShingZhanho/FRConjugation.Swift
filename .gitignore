@@ -5,6 +5,7 @@ __pycache__/
 *.egg-info/
 dist/
 *.egg
+.python-version
 
 # ── macOS ──────────────────────────────────────────────
 .DS_Store

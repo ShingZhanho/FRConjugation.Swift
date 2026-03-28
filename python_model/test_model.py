@@ -227,6 +227,41 @@ f = m.conjugate("parler", voice="active_avoir", mode="ind",
                 tense="present", person="je")
 check("alias resolution", f == "parle", f"got '{f}'")
 
+# -- 13. Third person singular neutral (3sn) -- reciprocal verbs ----------
+
+print("\n-- 3sn (reciprocal verbs) --")
+
+f = m.conjugate("entraider", voice="voix_prono", mode="indicatif",
+                tense="present", person="3sn")
+check("entraider prono ind.present 3sn", f == "s'entraide", f"got '{f}'")
+
+ps = m.persons("entraider", "voix_prono", "indicatif", "present")
+check("3sn in persons for entraider", "3sn" in ps, f"got {ps}")
+
+# -- 14. Gendered present participles (passive voice) ---------------------
+
+print("\n-- Gendered present participles --")
+
+f = m.conjugate("aimer", voice="voix_passive", mode="participe",
+                tense="present_sm")
+check("aimer passive participe present_sm",
+      f == "\u00e9tant aim\u00e9", f"got '{f}'")
+
+f = m.conjugate("aimer", voice="voix_passive", mode="participe",
+                tense="present_sf")
+check("aimer passive participe present_sf",
+      f == "\u00e9tant aim\u00e9e", f"got '{f}'")
+
+f = m.conjugate("aimer", voice="voix_passive", mode="participe",
+                tense="present_pm")
+check("aimer passive participe present_pm",
+      f == "\u00e9tant aim\u00e9s", f"got '{f}'")
+
+f = m.conjugate("aimer", voice="voix_passive", mode="participe",
+                tense="present_pf")
+check("aimer passive participe present_pf",
+      f == "\u00e9tant aim\u00e9es", f"got '{f}'")
+
 # -- Summary ---------------------------------------------------------------
 
 print(f"\n{'='*40}")

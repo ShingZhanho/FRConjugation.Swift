@@ -52,7 +52,9 @@ public enum Mode: String, CaseIterable, Sendable, Hashable {
 /// `.passeMasculinSingulier`, `.passeFemininSingulier`,
 /// `.passeMasculinPluriel`,   `.passeFemininPluriel`,
 /// `.passeCompoundMasculinSingulier`, `.passeCompoundFemininSingulier`,
-/// `.passeCompoundMasculinPluriel`, `.passeCompoundFemininPluriel`
+/// `.passeCompoundMasculinPluriel`, `.passeCompoundFemininPluriel`,
+/// `.presentMasculinSingulier`, `.presentFemininSingulier`,
+/// `.presentMasculinPluriel`, `.presentFemininPluriel`
 public enum Tense: String, CaseIterable, Sendable, Hashable {
     // Simple
     case present        = "present"
@@ -80,6 +82,12 @@ public enum Tense: String, CaseIterable, Sendable, Hashable {
     case passeCompoundFemininSingulier  = "passe_compound_sf"
     case passeCompoundMasculinPluriel   = "passe_compound_pm"
     case passeCompoundFemininPluriel    = "passe_compound_pf"
+
+    // Participle sub-forms (gendered present — passive voice)
+    case presentMasculinSingulier = "present_sm"
+    case presentFemininSingulier  = "present_sf"
+    case presentMasculinPluriel   = "present_pm"
+    case presentFemininPluriel    = "present_pf"
 }
 
 // MARK: - Person
@@ -92,7 +100,7 @@ public enum Tense: String, CaseIterable, Sendable, Hashable {
 /// The person keys follow the pattern `{number}{plurality}{gender}`:
 /// - Number: `1`, `2`, `3`
 /// - Plurality: `s` (singular), `p` (plural)
-/// - Gender: `m` (masculine), `f` (feminine)
+/// - Gender: `m` (masculine), `f` (feminine), `n` (neutral)
 public enum Person: String, CaseIterable, Sendable, Hashable {
     case firstSingularMasculine   = "1sm"
     case firstSingularFeminine    = "1sf"
@@ -100,6 +108,7 @@ public enum Person: String, CaseIterable, Sendable, Hashable {
     case secondSingularFeminine   = "2sf"
     case thirdSingularMasculine   = "3sm"
     case thirdSingularFeminine    = "3sf"
+    case thirdSingularNeutral     = "3sn"
     case firstPluralMasculine     = "1pm"
     case firstPluralFeminine      = "1pf"
     case secondPluralMasculine    = "2pm"
@@ -117,6 +126,7 @@ public enum Person: String, CaseIterable, Sendable, Hashable {
         case .secondSingularMasculine, .secondSingularFeminine: return "tu"
         case .thirdSingularMasculine:  return "il"
         case .thirdSingularFeminine:   return "elle"
+        case .thirdSingularNeutral:    return "on"
         case .firstPluralMasculine, .firstPluralFeminine:       return "nous"
         case .secondPluralMasculine, .secondPluralFeminine:     return "vous"
         case .thirdPluralMasculine:    return "ils"

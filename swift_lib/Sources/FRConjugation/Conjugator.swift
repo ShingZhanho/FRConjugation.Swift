@@ -10,7 +10,8 @@ import Foundation
 /// `Conjugator` loads a pre-trained model from disk and exposes a fully
 /// typed Swift API for conjugating French verbs.  The model covers all
 /// five grammatical voices (active-avoir, active-être, active, passive,
-/// pronominal) with 12 gender-explicit person keys.
+/// pronominal) with 13 gender-explicit person keys (including `3sn`
+/// for the pronoun *on* in reciprocal verbs).
 ///
 /// All conjugation forms — including compound tenses and participles —
 /// are predicted directly by the neural model (with an exception table

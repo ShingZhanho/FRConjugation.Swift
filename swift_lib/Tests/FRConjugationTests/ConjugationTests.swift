@@ -283,6 +283,56 @@ final class ConjugationTests: XCTestCase {
         }
     }
 
+    // MARK: - Third Person Singular Neutral (3sn — reciprocal verbs)
+
+    func testThirdSingularNeutral() throws {
+        let conj = try c
+        let form = conj.conjugate("entraider", voice: .pronominal, mode: .indicatif,
+                                   tense: .present, person: .thirdSingularNeutral)
+        XCTAssertEqual(form, "s'entraide")
+    }
+
+    func testThirdSingularNeutralInPersons() throws {
+        let conj = try c
+        let persons = conj.persons("entraider", voice: .pronominal, mode: .indicatif, tense: .present)
+        XCTAssertTrue(persons.contains(.thirdSingularNeutral))
+    }
+
+    func testThirdSingularNeutralPronoun() {
+        XCTAssertEqual(Person.thirdSingularNeutral.pronoun, "on")
+    }
+
+    // MARK: - Gendered Present Participles (passive voice)
+
+    func testGenderedPresentParticiple() throws {
+        let conj = try c
+        XCTAssertEqual(
+            conj.participle("aimer", voice: .passive, tense: .presentMasculinSingulier),
+            "étant aimé"
+        )
+        XCTAssertEqual(
+            conj.participle("aimer", voice: .passive, tense: .presentFemininSingulier),
+            "étant aimée"
+        )
+        XCTAssertEqual(
+            conj.participle("aimer", voice: .passive, tense: .presentMasculinPluriel),
+            "étant aimés"
+        )
+        XCTAssertEqual(
+            conj.participle("aimer", voice: .passive, tense: .presentFemininPluriel),
+            "étant aimées"
+        )
+    }
+
+    func testGenderedPresentParticipleInTenses() throws {
+        let conj = try c
+        let tenses = conj.tenses("aimer", voice: .passive, mode: .participe)
+        XCTAssertTrue(tenses.contains(.presentMasculinSingulier))
+        XCTAssertTrue(tenses.contains(.presentFemininSingulier))
+        XCTAssertTrue(tenses.contains(.presentMasculinPluriel))
+        XCTAssertTrue(tenses.contains(.presentFemininPluriel))
+    }
+
     // MARK: - Aggregate Conjugation
 
     func testConjugateModeTenses() throws {

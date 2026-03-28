@@ -6,6 +6,7 @@ __pycache__/
 dist/
 *.egg
 .python-version
+**/train_model_batch_ckpt.py
 
 # ── macOS ──────────────────────────────────────────────
 .DS_Store

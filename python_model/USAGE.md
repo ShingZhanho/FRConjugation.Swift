@@ -265,6 +265,10 @@ model.verbs("par")         # ["paraître", "pardonner", "parer", "parfaire", "pa
 | Tense                  | Meaning                                          |
 |:-----------------------|:-------------------------------------------------|
 | `present`              | Present participle (*parlant*)                   |
+| `present_sm`           | Gendered present participle, masculine singular  |
+| `present_sf`           | Gendered present participle, feminine singular   |
+| `present_pm`           | Gendered present participle, masculine plural    |
+| `present_pf`           | Gendered present participle, feminine plural     |
 | `passe_sm`             | Past participle, masculine singular              |
 | `passe_sf`             | Past participle, feminine singular               |
 | `passe_pm`             | Past participle, masculine plural                |
@@ -273,6 +277,9 @@ model.verbs("par")         # ["paraître", "pardonner", "parer", "parfaire", "pa
 | `passe_compound_sf`    | Compound past participle, feminine singular      |
 | `passe_compound_pm`    | Compound past participle, masculine plural       |
 | `passe_compound_pf`    | Compound past participle, feminine plural        |
+
+> **Note:** `present_sm/sf/pm/pf` are gendered present participle forms
+> found exclusively in the passive voice (e.g. *étant aimé*, *étant aimée*).
 
 ### Persons
 
@@ -284,6 +291,7 @@ model.verbs("par")         # ["paraître", "pardonner", "parer", "parfaire", "pa
 | `2sf`     |                  | Second person singular fem.    |
 | `3sm`     | `il`, `on`       | Third person singular masc.    |
 | `3sf`     | `elle`           | Third person singular fem.     |
+| `3sn`     |                  | Third person singular neutral (*on* — reciprocal verbs) |
 | `1pm`     | `nous`           | First person plural masc.      |
 | `1pf`     |                  | First person plural fem.       |
 | `2pm`     | `vous`           | Second person plural masc.     |
@@ -291,6 +299,11 @@ model.verbs("par")         # ["paraître", "pardonner", "parer", "parfaire", "pa
 | `3pm`     | `ils`            | Third person plural masc.      |
 | `3pf`     | `elles`          | Third person plural fem.       |
 | `-`       |                  | No person (participles)        |
+
+> **Note:** `3sn` is used by reciprocal verbs (e.g. *s'entraider*,
+> *s'entre-tuer*) for the pronoun *on*.  For non-reciprocal verbs,
+> use `3sm` (or the alias `on`) which maps to the same conjugation
+> as *il*.
 
 > **Imperatif** only uses `2sm`/`2sf`, `1pm`/`1pf`, `2pm`/`2pf`.
 

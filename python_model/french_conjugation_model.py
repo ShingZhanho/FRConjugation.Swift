@@ -219,19 +219,25 @@ _TENSE_ALIASES = {
     "passe_compound_sf": "passe_compound_sf",
     "passe_compound_pm": "passe_compound_pm",
     "passe_compound_pf": "passe_compound_pf",
+    # gendered present participle forms (passive voice)
+    "present_sm": "present_sm",
+    "present_sf": "present_sf",
+    "present_pm": "present_pm",
+    "present_pf": "present_pf",
 }
 
 _PERSON_ALIASES = {
     "1sm": "1sm", "1sf": "1sf",
     "2sm": "2sm", "2sf": "2sf",
     "3sm": "3sm", "3sf": "3sf",
+    "3sn": "3sn",
     "1pm": "1pm", "1pf": "1pf",
     "2pm": "2pm", "2pf": "2pf",
     "3pm": "3pm", "3pf": "3pf",
     "-": "-",
     # convenience aliases
     "je": "1sm", "tu": "2sm",
-    "il": "3sm", "elle": "3sf", "on": "3sm",
+    "il": "3sm", "elle": "3sf", "on": "3sn",
     "nous": "1pm", "vous": "2pm",
     "ils": "3pm", "elles": "3pf",
 }

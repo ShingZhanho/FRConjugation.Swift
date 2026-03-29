@@ -698,6 +698,210 @@ public final class Conjugator: @unchecked Sendable {
         return raw.contains(";")
     }
 
+    // MARK: - Pronoun
+
+    /// French vowels used for elision checks.
+    private static let frenchVowels: Set<Character> = ["a", "e", "i", "o", "u",
+                                                        "\u{00E0}", "\u{00E2}", "\u{00E9}", "\u{00E8}", "\u{00EA}", "\u{00EB}",
+                                                        "\u{00EE}", "\u{00EF}", "\u{00F4}", "\u{00F9}", "\u{00FB}", "\u{00FC}",
+                                                        "\u{0153}", "\u{00E6}", "y"]
+
+    /// Whether a conjugated form starts with a sound that triggers elision.
+    ///
+    /// **Must be called while `lock` is held.**
+    private func formStartsWithVowelSound(_ form: String, infinitive: String) -> Bool {
+        guard let first = form.first else { return false }
+        let lower = Character(first.lowercased())
+        if lower == "h" {
+            return !engine.hAspire.contains(infinitive)
+        }
+        return Self.frenchVowels.contains(lower)
+    }
+
+    /// Return the contextual subject pronoun for a conjugated form.
+    ///
+    /// The pronoun accounts for elision ("je" becomes "j'" before a
+    /// vowel sound or h-muet) and prepends *que* / *qu'* for the
+    /// subjonctif mood.
+    ///
+    ///     conjugator.getPronoun("aimer", voice: .activeAvoir,
+    ///         mode: .indicatif, tense: .present,
+    ///         person: .firstSingularMasculine)
+    ///     // -> "j'"
+    ///
+    ///     conjugator.getPronoun("parler", voice: .activeAvoir,
+    ///         mode: .subjonctif, tense: .present,
+    ///         person: .thirdSingularMasculine)
+    ///     // -> "qu'il "
+    ///
+    /// - Returns: The pronoun string (with trailing space or apostrophe),
+    ///   or `nil` for imperatif, participe, unknown verbs, or invalid
+    ///   combinations.
+    public func getPronoun(
+        _ infinitive: String,
+        voice: Voice,
+        mode: Mode,
+        tense: Tense,
+        person: Person
+    ) -> String? {
+        // No subject pronoun for imperatif or participe
+        guard mode != .imperatif, mode != .participe else { return nil }
+
+        lock.lock()
+        defer { lock.unlock() }
+
+        // Validate combination and get the conjugated form
+        guard let persons = engine.verbStructure[infinitive]?[voice.rawValue]?[mode.rawValue]?[tense.rawValue],
+              persons.contains(person.rawValue) else {
+            return nil
+        }
+        guard let raw = cachedPredict(
+            infinitive: infinitive,
+            voice: voice.rawValue,
+            mode: mode.rawValue,
+            tense: tense.rawValue,
+            person: person.rawValue
+        ) else { return nil }
+
+        let form = Self.primaryForm(raw)
+        return pronounString(person: person, mode: mode, form: form, infinitive: infinitive)
+    }
+
+    /// Build the pronoun string for a given person, mode, and conjugated form.
+    ///
+    /// **Must be called while `lock` is held.**
+    private func pronounString(person: Person, mode: Mode, form: String, infinitive: String) -> String {
+        let base = person.pronoun
+        let vowelSound = formStartsWithVowelSound(form, infinitive: infinitive)
+
+        // Determine the subject pronoun (with possible elision)
+        let subject: String
+        if (person == .firstSingularMasculine || person == .firstSingularFeminine) && vowelSound {
+            subject = "j'"
+        } else {
+            subject = base + " "
+        }
+
+        // Subjonctif: prepend "que" / "qu'"
+        if mode == .subjonctif {
+            let pronounStartsWithVowel: Bool
+            switch person {
+            case .thirdSingularMasculine, .thirdSingularFeminine,
+                 .thirdSingularNeutral,
+                 .thirdPluralMasculine, .thirdPluralFeminine:
+                pronounStartsWithVowel = true    // il, elle, on, ils, elles
+            default:
+                pronounStartsWithVowel = false
+            }
+
+            if pronounStartsWithVowel {
+                return "qu'" + subject
+            }
+            return "que " + subject
+        }
+
+        return subject
+    }
+
+    /// Return the conjugated form prefixed with its contextual subject pronoun.
+    ///
+    /// Combines ``getPronoun(_:voice:mode:tense:person:)`` and
+    /// ``conjugate(_:voice:mode:tense:person:)`` into a single call.
+    /// For modes with no subject pronoun (imperatif, participe), the
+    /// bare conjugated form is returned.
+    ///
+    ///     conjugator.conjugateWithPronoun("aimer", voice: .activeAvoir,
+    ///         mode: .indicatif, tense: .present,
+    ///         person: .firstSingularMasculine)
+    ///     // -> "j'aime"
+    ///
+    ///     conjugator.conjugateWithPronoun("parler", voice: .activeAvoir,
+    ///         mode: .imperatif, tense: .present,
+    ///         person: .secondSingularMasculine)
+    ///     // -> "parle"
+    ///
+    /// - Returns: The pronoun + form string, or `nil` if the verb is
+    ///   unknown or the combination is invalid.
+    public func conjugateWithPronoun(
+        _ infinitive: String,
+        voice: Voice,
+        mode: Mode,
+        tense: Tense,
+        person: Person
+    ) -> String? {
+        // Modes with no subject pronoun -- return bare form
+        if mode == .imperatif || mode == .participe {
+            return conjugate(infinitive, voice: voice, mode: mode,
+                             tense: tense, person: person)
+        }
+
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard let persons = engine.verbStructure[infinitive]?[voice.rawValue]?[mode.rawValue]?[tense.rawValue],
+              persons.contains(person.rawValue) else {
+            return nil
+        }
+        guard let raw = cachedPredict(
+            infinitive: infinitive,
+            voice: voice.rawValue,
+            mode: mode.rawValue,
+            tense: tense.rawValue,
+            person: person.rawValue
+        ) else { return nil }
+
+        let form = Self.primaryForm(raw)
+        let pronoun = pronounString(person: person, mode: mode, form: form, infinitive: infinitive)
+        return pronoun + form
+    }
+
+    /// Return the alternative conjugated form prefixed with its contextual
+    /// subject pronoun.
+    ///
+    /// Combines ``getPronoun(_:voice:mode:tense:person:)`` and
+    /// ``conjugateAlternative(_:voice:mode:tense:person:)`` into a single call.
+    /// For modes with no subject pronoun (imperatif, participe), the
+    /// bare alternative form is returned.
+    ///
+    ///     conjugator.conjugateAlternativeWithPronoun("abr\u{00E9}ger",
+    ///         voice: .activeAvoir, mode: .indicatif,
+    ///         tense: .futurSimple, person: .firstSingularMasculine)
+    ///     // -> "j'abr\u{00E8}gerai"
+    ///
+    /// - Returns: The pronoun + alternative form string, or `nil` if the
+    ///   verb is unknown or the combination is invalid.
+    public func conjugateAlternativeWithPronoun(
+        _ infinitive: String,
+        voice: Voice,
+        mode: Mode,
+        tense: Tense,
+        person: Person
+    ) -> String? {
+        if mode == .imperatif || mode == .participe {
+            return conjugateAlternative(infinitive, voice: voice, mode: mode,
+                                        tense: tense, person: person)
+        }
+
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard let persons = engine.verbStructure[infinitive]?[voice.rawValue]?[mode.rawValue]?[tense.rawValue],
+              persons.contains(person.rawValue) else {
+            return nil
+        }
+        guard let raw = cachedPredict(
+            infinitive: infinitive,
+            voice: voice.rawValue,
+            mode: mode.rawValue,
+            tense: tense.rawValue,
+            person: person.rawValue
+        ) else { return nil }
+
+        let form = Self.alternativeForm(raw)
+        let pronoun = pronounString(person: person, mode: mode, form: form, infinitive: infinitive)
+        return pronoun + form
+    }
+
     /// Get all participle forms for a verb in a given voice.
     ///
     /// Returns the **primary** form for each tense.  Use
@@ -760,6 +964,60 @@ public final class Conjugator: @unchecked Sendable {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let result = self.participleAlternative(infinitive, voice: voice, tense: tense)
+                continuation.resume(returning: result)
+            }
+        }
+    }
+
+    /// Async variant of ``getPronoun(_:voice:mode:tense:person:)``.
+    @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+    public func getPronoun(
+        _ infinitive: String,
+        voice: Voice,
+        mode: Mode,
+        tense: Tense,
+        person: Person
+    ) async -> String? {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let result = self.getPronoun(infinitive, voice: voice, mode: mode,
+                                             tense: tense, person: person)
+                continuation.resume(returning: result)
+            }
+        }
+    }
+
+    /// Async variant of ``conjugateWithPronoun(_:voice:mode:tense:person:)``.
+    @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+    public func conjugateWithPronoun(
+        _ infinitive: String,
+        voice: Voice,
+        mode: Mode,
+        tense: Tense,
+        person: Person
+    ) async -> String? {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let result = self.conjugateWithPronoun(infinitive, voice: voice, mode: mode,
+                                                      tense: tense, person: person)
+                continuation.resume(returning: result)
+            }
+        }
+    }
+
+    /// Async variant of ``conjugateAlternativeWithPronoun(_:voice:mode:tense:person:)``.
+    @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+    public func conjugateAlternativeWithPronoun(
+        _ infinitive: String,
+        voice: Voice,
+        mode: Mode,
+        tense: Tense,
+        person: Person
+    ) async -> String? {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let result = self.conjugateAlternativeWithPronoun(infinitive, voice: voice, mode: mode,
+                                                                  tense: tense, person: person)
                 continuation.resume(returning: result)
             }
         }

@@ -45,6 +45,10 @@ fr.participle("prendre", voice: .activeAvoir, tense: .passeFemininPluriel)
 - **Variant forms** -- some forms have alternative spellings (e.g. 1990
   reform variants separated by `;` in the database).  The primary form
   is returned by default; dedicated methods expose the alternative.
+- **Pronoun generation** -- `getPronoun` returns the contextual French
+  subject pronoun with correct elision (`j'` before vowels/h-muet) and
+  *que*/*qu'* prefix for the subjonctif.  `conjugateWithPronoun` and
+  `conjugateAlternativeWithPronoun` produce ready-to-display strings.
 - **Structure queries** -- discover available voices, modes, tenses, and
   persons for any verb dynamically.
 - **Verb listing** -- `allVerbs` returns a sorted list of all 6,298
@@ -80,7 +84,7 @@ Add the package dependency in your `Package.swift`:
 
 ```swift
 dependencies: [
-  .package(url: "https://github.com/ShingZhanho/FRConjugation.Swift.git", from: "4.0.0"),
+  .package(url: "https://github.com/ShingZhanho/FRConjugation.Swift.git", from: "4.1.0"),
 ]
 ```
 
@@ -167,6 +171,54 @@ fr.participleAlternative("verb", voice: .activeAvoir, tense: .present)
 ```
 
 All variant methods have async overloads.
+
+#### Pronoun & Conjugation with Pronoun
+
+`getPronoun` returns the contextual French subject pronoun for a
+conjugated form.  It handles elision (`je` becomes `j'` before a vowel
+or h-muet) and prepends `que`/`qu'` for the subjonctif mood.
+
+`conjugateWithPronoun` and `conjugateAlternativeWithPronoun` combine
+the pronoun and conjugated form into a single string.  For imperatif and
+participe (which have no subject pronoun), the bare conjugated form is
+returned.
+
+```swift
+fr.getPronoun("aimer", voice: .activeAvoir, mode: .indicatif,
+              tense: .present, person: .firstSingularMasculine)
+// -> "j'"   (trailing apostrophe -- elision before vowel)
+
+fr.getPronoun("parler", voice: .activeAvoir, mode: .indicatif,
+              tense: .present, person: .firstSingularMasculine)
+// -> "je "  (trailing space -- no elision)
+
+fr.getPronoun("parler", voice: .activeAvoir, mode: .subjonctif,
+              tense: .present, person: .thirdSingularMasculine)
+// -> "qu'il "  (que contracts before il)
+
+fr.getPronoun("parler", voice: .activeAvoir, mode: .imperatif,
+              tense: .present, person: .secondSingularMasculine)
+// -> nil  (no subject pronoun for imperatif)
+
+fr.conjugateWithPronoun("aimer", voice: .activeAvoir, mode: .indicatif,
+                        tense: .present, person: .firstSingularMasculine)
+// -> "j'aime"
+
+fr.conjugateWithPronoun("parler", voice: .activeAvoir, mode: .subjonctif,
+                        tense: .present, person: .thirdSingularMasculine)
+// -> "qu'il parle"
+
+fr.conjugateWithPronoun("parler", voice: .activeAvoir, mode: .imperatif,
+                        tense: .present, person: .secondSingularMasculine)
+// -> "parle"  (bare form for imperatif)
+
+fr.conjugateAlternativeWithPronoun("abreger", voice: .activeAvoir,
+    mode: .indicatif, tense: .futurSimple,
+    person: .firstSingularMasculine)
+// -> "j'abregeai"  (alternative spelling with pronoun)
+```
+
+All pronoun methods have async overloads.
 
 #### Participles
 

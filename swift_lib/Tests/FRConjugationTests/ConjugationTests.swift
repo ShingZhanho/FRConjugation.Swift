@@ -556,4 +556,232 @@ final class ConjugationTests: XCTestCase {
         XCTAssertEqual(primary, "abrégerais")
         XCTAssertEqual(alt, "abrègerais")
     }
+
+    // MARK: - getPronoun
+
+    func testGetPronounBasicConsonant() throws {
+        let conj = try c
+        // "parle" starts with consonant -- no elision
+        let pronoun = conj.getPronoun("parler", voice: .activeAvoir, mode: .indicatif,
+                                       tense: .present, person: .firstSingularMasculine)
+        XCTAssertEqual(pronoun, "je ")
+    }
+
+    func testGetPronounJeElisionVowel() throws {
+        let conj = try c
+        // "aime" starts with vowel -- je -> j'
+        let pronoun = conj.getPronoun("aimer", voice: .activeAvoir, mode: .indicatif,
+                                       tense: .present, person: .firstSingularMasculine)
+        XCTAssertEqual(pronoun, "j'")
+    }
+
+    func testGetPronounJeElisionCompound() throws {
+        let conj = try c
+        // passe compose "ai parle" starts with vowel 'a' -- je -> j'
+        let pronoun = conj.getPronoun("parler", voice: .activeAvoir, mode: .indicatif,
+                                       tense: .passeCompose, person: .firstSingularMasculine)
+        XCTAssertEqual(pronoun, "j'")
+    }
+
+    func testGetPronounHAspireNoElision() throws {
+        let conj = try c
+        // "hair" is h-aspire -- no elision
+        XCTAssertTrue(conj.isHAspire("ha\u{00EF}r"))
+        let pronoun = conj.getPronoun("ha\u{00EF}r", voice: .activeAvoir, mode: .indicatif,
+                                       tense: .present, person: .firstSingularMasculine)
+        XCTAssertEqual(pronoun, "je ")
+    }
+
+    func testGetPronounHMuetElision() throws {
+        let conj = try c
+        // "habiter" is h-muet -- elision
+        XCTAssertFalse(conj.isHAspire("habiter"))
+        let pronoun = conj.getPronoun("habiter", voice: .activeAvoir, mode: .indicatif,
+                                       tense: .present, person: .firstSingularMasculine)
+        XCTAssertEqual(pronoun, "j'")
+    }
+
+    func testGetPronounThirdPersonNoElision() throws {
+        let conj = try c
+        // "il" does not elide regardless of form
+        let pronoun = conj.getPronoun("aimer", voice: .activeAvoir, mode: .indicatif,
+                                       tense: .present, person: .thirdSingularMasculine)
+        XCTAssertEqual(pronoun, "il ")
+    }
+
+    func testGetPronounSubjonctifQue() throws {
+        let conj = try c
+        // subjonctif: "que je parle"
+        let pronoun = conj.getPronoun("parler", voice: .activeAvoir, mode: .subjonctif,
+                                       tense: .present, person: .firstSingularMasculine)
+        XCTAssertEqual(pronoun, "que je ")
+    }
+
+    func testGetPronounSubjonctifQueElision() throws {
+        let conj = try c
+        // subjonctif je + vowel: "que j'aime"
+        let pronoun = conj.getPronoun("aimer", voice: .activeAvoir, mode: .subjonctif,
+                                       tense: .present, person: .firstSingularMasculine)
+        XCTAssertEqual(pronoun, "que j'")
+    }
+
+    func testGetPronounSubjonctifQuApostrophe() throws {
+        let conj = try c
+        // subjonctif 3sm: "qu'il" (il starts with vowel)
+        let pronoun = conj.getPronoun("parler", voice: .activeAvoir, mode: .subjonctif,
+                                       tense: .present, person: .thirdSingularMasculine)
+        XCTAssertEqual(pronoun, "qu'il ")
+    }
+
+    func testGetPronounSubjonctifQuElles() throws {
+        let conj = try c
+        // subjonctif 3pf: "qu'elles"
+        let pronoun = conj.getPronoun("parler", voice: .activeAvoir, mode: .subjonctif,
+                                       tense: .present, person: .thirdPluralFeminine)
+        XCTAssertEqual(pronoun, "qu'elles ")
+    }
+
+    func testGetPronounSubjonctifQueNous() throws {
+        let conj = try c
+        // subjonctif 1pm: "que nous" (nous starts with consonant)
+        let pronoun = conj.getPronoun("parler", voice: .activeAvoir, mode: .subjonctif,
+                                       tense: .present, person: .firstPluralMasculine)
+        XCTAssertEqual(pronoun, "que nous ")
+    }
+
+    func testGetPronounImperatifNil() throws {
+        let conj = try c
+        let pronoun = conj.getPronoun("parler", voice: .activeAvoir, mode: .imperatif,
+                                       tense: .present, person: .secondSingularMasculine)
+        XCTAssertNil(pronoun)
+    }
+
+    func testGetPronounParticipeNil() throws {
+        let conj = try c
+        let pronoun = conj.getPronoun("parler", voice: .activeAvoir, mode: .participe,
+                                       tense: .present, person: .firstSingularMasculine)
+        XCTAssertNil(pronoun)
+    }
+
+    func testGetPronounUnknownVerbNil() throws {
+        let conj = try c
+        let pronoun = conj.getPronoun("zzzzz", voice: .activeAvoir, mode: .indicatif,
+                                       tense: .present, person: .firstSingularMasculine)
+        XCTAssertNil(pronoun)
+    }
+
+    func testGetPronounOtherPersons() throws {
+        let conj = try c
+        XCTAssertEqual(conj.getPronoun("parler", voice: .activeAvoir, mode: .indicatif,
+                                        tense: .present, person: .secondSingularMasculine), "tu ")
+        XCTAssertEqual(conj.getPronoun("parler", voice: .activeAvoir, mode: .indicatif,
+                                        tense: .present, person: .firstPluralMasculine), "nous ")
+        XCTAssertEqual(conj.getPronoun("parler", voice: .activeAvoir, mode: .indicatif,
+                                        tense: .present, person: .secondPluralMasculine), "vous ")
+        XCTAssertEqual(conj.getPronoun("parler", voice: .activeAvoir, mode: .indicatif,
+                                        tense: .present, person: .thirdPluralFeminine), "elles ")
+        // 3sn (on) only exists for pronominal voice
+        XCTAssertEqual(conj.getPronoun("entraider", voice: .pronominal, mode: .indicatif,
+                                        tense: .present, person: .thirdSingularNeutral), "on ")
+    }
+
+    // MARK: - conjugateWithPronoun
+
+    func testConjugateWithPronounBasic() throws {
+        let conj = try c
+        let result = conj.conjugateWithPronoun("parler", voice: .activeAvoir, mode: .indicatif,
+                                                tense: .present, person: .firstSingularMasculine)
+        XCTAssertEqual(result, "je parle")
+    }
+
+    func testConjugateWithPronounElision() throws {
+        let conj = try c
+        let result = conj.conjugateWithPronoun("aimer", voice: .activeAvoir, mode: .indicatif,
+                                                tense: .present, person: .firstSingularMasculine)
+        XCTAssertEqual(result, "j'aime")
+    }
+
+    func testConjugateWithPronounCompound() throws {
+        let conj = try c
+        let result = conj.conjugateWithPronoun("parler", voice: .activeAvoir, mode: .indicatif,
+                                                tense: .passeCompose, person: .firstSingularMasculine)
+        XCTAssertEqual(result, "j'ai parl\u{00E9}")
+    }
+
+    func testConjugateWithPronounSubjonctif() throws {
+        let conj = try c
+        let result = conj.conjugateWithPronoun("parler", voice: .activeAvoir, mode: .subjonctif,
+                                                tense: .present, person: .thirdSingularMasculine)
+        XCTAssertEqual(result, "qu'il parle")
+    }
+
+    func testConjugateWithPronounSubjonctifJeElision() throws {
+        let conj = try c
+        let result = conj.conjugateWithPronoun("aimer", voice: .activeAvoir, mode: .subjonctif,
+                                                tense: .present, person: .firstSingularMasculine)
+        XCTAssertEqual(result, "que j'aime")
+    }
+
+    func testConjugateWithPronounImperatifBareForm() throws {
+        let conj = try c
+        let result = conj.conjugateWithPronoun("parler", voice: .activeAvoir, mode: .imperatif,
+                                                tense: .present, person: .secondSingularMasculine)
+        XCTAssertEqual(result, "parle")
+    }
+
+    func testConjugateWithPronounUnknownNil() throws {
+        let conj = try c
+        let result = conj.conjugateWithPronoun("zzzzz", voice: .activeAvoir, mode: .indicatif,
+                                                tense: .present, person: .firstSingularMasculine)
+        XCTAssertNil(result)
+    }
+
+    func testConjugateWithPronounHAspire() throws {
+        let conj = try c
+        let result = conj.conjugateWithPronoun("ha\u{00EF}r", voice: .activeAvoir, mode: .indicatif,
+                                                tense: .present, person: .firstSingularMasculine)
+        XCTAssertEqual(result, "je hais")
+    }
+
+    func testConjugateWithPronounHMuet() throws {
+        let conj = try c
+        let result = conj.conjugateWithPronoun("habiter", voice: .activeAvoir, mode: .indicatif,
+                                                tense: .present, person: .firstSingularMasculine)
+        XCTAssertEqual(result, "j'habite")
+    }
+
+    // MARK: - conjugateAlternativeWithPronoun
+
+    func testConjugateAlternativeWithPronounBasic() throws {
+        let conj = try c
+        let result = conj.conjugateAlternativeWithPronoun("abr\u{00E9}ger", voice: .activeAvoir,
+                                                           mode: .indicatif, tense: .futurSimple,
+                                                           person: .firstSingularMasculine)
+        XCTAssertEqual(result, "j'abr\u{00E8}gerai")
+    }
+
+    func testConjugateAlternativeWithPronounFallback() throws {
+        let conj = try c
+        // No alternative for "parler" -- should fall back to primary form
+        let result = conj.conjugateAlternativeWithPronoun("parler", voice: .activeAvoir,
+                                                           mode: .indicatif, tense: .present,
+                                                           person: .firstSingularMasculine)
+        XCTAssertEqual(result, "je parle")
+    }
+
+    func testConjugateAlternativeWithPronounImperatif() throws {
+        let conj = try c
+        let result = conj.conjugateAlternativeWithPronoun("parler", voice: .activeAvoir,
+                                                           mode: .imperatif, tense: .present,
+                                                           person: .secondSingularMasculine)
+        XCTAssertEqual(result, "parle")
+    }
+
+    func testConjugateAlternativeWithPronounUnknownNil() throws {
+        let conj = try c
+        let result = conj.conjugateAlternativeWithPronoun("zzzzz", voice: .activeAvoir,
+                                                           mode: .indicatif, tense: .present,
+                                                           person: .firstSingularMasculine)
+        XCTAssertNil(result)
+    }
 }

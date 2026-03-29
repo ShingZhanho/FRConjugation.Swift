@@ -1,4 +1,4 @@
-// InferenceEngine.swift — Load exported weights and run seq2seq inference.
+// InferenceEngine.swift -- Load exported weights and run seq2seq inference.
 //
 // Reads the model.json + weights.bin files produced by export_weights.py
 // and builds the neural network layers for pure-Swift inference.
@@ -18,7 +18,7 @@ private let EOS_IDX = 2
 
 /// Loads the exported model and runs character-level seq2seq inference.
 ///
-/// This is an internal type — the public API is ``Conjugator``.
+/// This is an internal type -- the public API is ``Conjugator``.
 final class InferenceEngine: @unchecked Sendable {
 
     // ── Vocabulary ───────────────────────────────────────────────────────
@@ -38,7 +38,7 @@ final class InferenceEngine: @unchecked Sendable {
     let reform1990Verbs: Set<String>
     let reformVariantes: [String: String]
 
-    /// Verb structure: verb → { voice → { mode → { tense → [person] } } }
+    /// Verb structure: verb -> { voice -> { mode -> { tense -> [person] } } }
     let verbStructure: [String: [String: [String: [String: [String]]]]]
 
     // ── Layers ───────────────────────────────────────────────────────────
@@ -121,7 +121,7 @@ final class InferenceEngine: @unchecked Sendable {
             }
         }
 
-        // Map verb → template
+        // Map verb -> template
         var verbStructure = [String: VerbStruct](minimumCapacity: rawIds.count)
         for (verb, tid) in rawIds {
             if tid < templates.count {
@@ -204,7 +204,7 @@ final class InferenceEngine: @unchecked Sendable {
 
     // MARK: - Prediction
 
-    /// Run a single neural prediction: infinitive + voice/mode/tense/person → conjugated form.
+    /// Run a single neural prediction: infinitive + voice/mode/tense/person -> conjugated form.
     ///
     /// Checks the exception table first, then falls back to greedy decoding.
     ///
@@ -238,7 +238,7 @@ final class InferenceEngine: @unchecked Sendable {
         // Encode
         let (encOutputs, encHidden) = encoder.encode(charIds)
 
-        // Bridge → initial decoder hidden (now includes voice)
+        // Bridge -> initial decoder hidden (now includes voice)
         var decHidden = bridge.initDecoder(
             encoderHidden: encHidden,
             voiceIdx: voiceIdx,

@@ -1,4 +1,4 @@
-# French Conjugation Model — Usage Guide
+# French Conjugation Model -- Usage Guide
 
 A lightweight, ML-based French verb conjugation engine.  Given a verb
 infinitive and optional voice/mode/tense/person parameters, it returns
@@ -24,11 +24,11 @@ model = ConjugationModel("conjugation_model_final.pt")
 # Single form (voice is required when specifying mode/tense/person)
 model.conjugate("parler", voice="active_avoir", mode="indicatif",
                 tense="present", person="1sm")
-# → "parle"
+# -> "parle"
 
 # All conjugations for a verb (all voices)
 model.conjugate("finir")
-# → { "voix_active_avoir": { "indicatif": { "present": { "1sm": "finis", ... }, ... }, ... } }
+# -> { "voix_active_avoir": { "indicatif": { "present": { "1sm": "finis", ... }, ... }, ... } }
 ```
 
 ### Singleton Helper
@@ -61,16 +61,16 @@ Loads the trained model from disk.
 
 Main conjugation method.  Returns a single string, a nested dictionary, or `None`.
 
-Parameters are **layered** — specifying a lower layer requires all upper
+Parameters are **layered** -- specifying a lower layer requires all upper
 layers to be present:
 
 | Specified                                  | Returns |
 |:-------------------------------------------|:--------|
-| `voice` + `mode` + `tense` + `person`     | `str` — the conjugated form |
-| `voice` + `mode` + `tense`                | `dict` — `{ person: form }` |
-| `voice` + `mode`                           | `dict` — `{ tense: { person: form } }` |
-| `voice`                                    | `dict` — `{ mode: { tense: { person: form } } }` |
-| Nothing                                    | `dict` — `{ voice: { mode: { tense: { person: form } } } }` |
+| `voice` + `mode` + `tense` + `person`     | `str` -- the conjugated form |
+| `voice` + `mode` + `tense`                | `dict` -- `{ person: form }` |
+| `voice` + `mode`                           | `dict` -- `{ tense: { person: form } }` |
+| `voice`                                    | `dict` -- `{ mode: { tense: { person: form } } }` |
+| Nothing                                    | `dict` -- `{ voice: { mode: { tense: { person: form } } } }` |
 | Verb unknown                               | `None` |
 
 Specifying `person` without `tense`, or `tense` without `mode`, or
@@ -82,130 +82,130 @@ Specifying `person` without `tense`, or `tense` without `mode`, or
 # Single form
 model.conjugate("aller", voice="active_etre", mode="indicatif",
                 tense="present", person="1sm")
-# → "vais"
+# -> "vais"
 
 # All persons for a tense
 model.conjugate("venir", voice="active_etre", mode="indicatif",
                 tense="passe_compose")
-# → { "1sm": "suis venu", "1sf": "suis venue", "3sf": "est venue", ... }
+# -> { "1sm": "suis venu", "1sf": "suis venue", "3sf": "est venue", ... }
 
 # All tenses in indicatif
 model.conjugate("finir", voice="active_avoir", mode="indicatif")
-# → { "present": {"1sm": "finis", ...}, "imparfait": {...}, ... }
+# -> { "present": {"1sm": "finis", ...}, "imparfait": {...}, ... }
 
 # All modes for a voice
 model.conjugate("aller", voice="active_etre")
-# → { "indicatif": { ... }, "subjonctif": { ... }, ... }
+# -> { "indicatif": { ... }, "subjonctif": { ... }, ... }
 
 # Everything
 model.conjugate("battre")
-# → { "voix_active_avoir": { ... }, "voix_prono": { ... } }
+# -> { "voix_active_avoir": { ... }, "voix_prono": { ... } }
 ```
 
 ---
 
-### `model.voices(infinitive)`
+### `model.voices(infinitive)` -- returns `list[str]`
 
 List available voices for a verb.
 
 ```python
 model.voices("aller")
-# → ["voix_active_etre", "voix_prono"]
+# -> ["voix_active_etre", "voix_prono"]
 
 model.voices("manger")
-# → ["voix_active_avoir", "voix_passive", "voix_prono"]
+# -> ["voix_active_avoir", "voix_passive", "voix_prono"]
 ```
 
-### `model.modes(infinitive, voice)`
+### `model.modes(infinitive, voice)` -- returns `list[str]`
 
 List available modes for a verb in a given voice.
 
 ```python
 model.modes("parler", "active_avoir")
-# → ["conditionnel", "imperatif", "indicatif", "participe", "subjonctif"]
+# -> ["conditionnel", "imperatif", "indicatif", "participe", "subjonctif"]
 ```
 
-### `model.tenses(infinitive, voice, mode)`
+### `model.tenses(infinitive, voice, mode)` -- returns `list[str]`
 
 List available tenses for a verb in a given voice and mode.
 
 ```python
 model.tenses("parler", "active_avoir", "indicatif")
-# → ["futur_anterieur", "futur_simple", "imparfait", "passe_anterieur",
+# -> ["futur_anterieur", "futur_simple", "imparfait", "passe_anterieur",
 #    "passe_compose", "passe_simple", "plus_que_parfait", "present"]
 ```
 
-### `model.persons(infinitive, voice, mode, tense)`
+### `model.persons(infinitive, voice, mode, tense)` -- returns `list[str]`
 
 List available person keys for a specific combination.
 
 ```python
 model.persons("parler", "active_avoir", "indicatif", "present")
-# → ["1sm", "1sf", "2sm", "2sf", "3sm", "3sf", "1pm", "1pf", "2pm", "2pf", "3pm", "3pf"]
+# -> ["1sm", "1sf", "2sm", "2sf", "3sm", "3sf", "1pm", "1pf", "2pm", "2pf", "3pm", "3pf"]
 
 model.persons("falloir", "voix_active", "indicatif", "present")
-# → ["3sm"]
+# -> ["3sm"]
 ```
 
 ---
 
-### `model.has_verb(infinitive) → bool`
+### `model.has_verb(infinitive)` -- returns `bool`
 
 Check whether a verb is in the model's vocabulary.
 
 ```python
-model.has_verb("parler")   # → True
-model.has_verb("xyzfake")  # → False
+model.has_verb("parler")   # -> True
+model.has_verb("xyzfake")  # -> False
 ```
 
 ---
 
-### `model.is_h_aspire(infinitive) → bool`
+### `model.is_h_aspire(infinitive)` -- returns `bool`
 
 Returns whether the verb begins with an aspirate *h*.
 
 ```python
-model.is_h_aspire("hurler")   # → True
-model.is_h_aspire("habiter")  # → False
+model.is_h_aspire("hurler")   # -> True
+model.is_h_aspire("habiter")  # -> False
 ```
 
 ---
 
-### `model.is_1990_reform(infinitive) → bool`
+### `model.is_1990_reform(infinitive)` -- returns `bool`
 
 Returns whether the verb has 1990 orthographic reform spelling changes.
 
 ```python
-model.is_1990_reform("céder")  # → True
+model.is_1990_reform("ceder")  # -> True
 ```
 
-### `model.reform_variante(infinitive) → str | None`
+### `model.reform_variante(infinitive)` -- returns `str | None`
 
 Returns the 1990 reform variant spelling, or `None`.
 
 ```python
-model.reform_variante("céder")  # → "cèder"
+model.reform_variante("ceder")  # -> "ceder"
 ```
 
 ---
 
-### `model.verb_count → int`
+### `model.verb_count` -- `int`
 
 The number of verbs known to the model.
 
 ```python
-model.verb_count  # → 6298
+model.verb_count  # -> 6298
 ```
 
 ---
 
-### `model.verbs(prefix=None) → list[str]`
+### `model.verbs(prefix=None)` -- returns `list[str]`
 
 A sorted list of all known verb infinitives.  Optionally filter by prefix.
 
 ```python
 model.verbs()              # all 6,298 verbs
-model.verbs("par")         # ["paraître", "pardonner", "parer", "parfaire", "parier", "parler", ...]
+model.verbs("par")         # ["paraitre", "pardonner", "parer", "parfaire", "parier", "parler", ...]
 ```
 
 ---
@@ -279,7 +279,7 @@ model.verbs("par")         # ["paraître", "pardonner", "parer", "parfaire", "pa
 | `passe_compound_pf`    | Compound past participle, feminine plural        |
 
 > **Note:** `present_sm/sf/pm/pf` are gendered present participle forms
-> found exclusively in the passive voice (e.g. *étant aimé*, *étant aimée*).
+> found exclusively in the passive voice (e.g. *etant aime*, *etant aimee*).
 
 ### Persons
 
@@ -291,7 +291,7 @@ model.verbs("par")         # ["paraître", "pardonner", "parer", "parfaire", "pa
 | `2sf`     |                  | Second person singular fem.    |
 | `3sm`     | `il`, `on`       | Third person singular masc.    |
 | `3sf`     | `elle`           | Third person singular fem.     |
-| `3sn`     |                  | Third person singular neutral (*on* — reciprocal verbs) |
+| `3sn`     |                  | Third person singular neutral (*on* -- reciprocal verbs) |
 | `1pm`     | `nous`           | First person plural masc.      |
 | `1pf`     |                  | First person plural fem.       |
 | `2pm`     | `vous`           | Second person plural masc.     |
@@ -335,12 +335,12 @@ Bahdanau attention, built in PyTorch:
   via four learned embeddings (32-dim each)
 - **Bridge:** Linear + tanh combining encoder final hidden + 4 conditioning
   embeddings into the decoder initial hidden state
-- **Exception table:** A small lookup (2,329 entries) embedded in the
+- **Exception table:** A small lookup (771 entries) embedded in the
   checkpoint to guarantee 100% accuracy on the training vocabulary
 
-The model has **1,538,795 parameters**, is approximately **6 MB**, and
-covers **6,298 French verbs** across **5 voices** — **2,559,057
-conjugated forms** at **100% accuracy**.
+The model has approximately **1,540,000 parameters**, is approximately
+**6 MB**, and covers **6,298 French verbs** across **5 voices** --
+**2,553,802 conjugated forms** at **100% accuracy**.
 
 ---
 
@@ -350,7 +350,7 @@ conjugated forms** at **100% accuracy**.
 |:---------------------------------|:-----------------------------------------------------------|
 | `french_conjugation_model.py`    | Module to load and use the model (import this)             |
 | `conjugation_model_final.pt`     | Final model checkpoint (ML weights + exception table)      |
-| `conjugation_model.pt`           | ML-only model checkpoint (no exception table, ~99.91%)     |
+| `conjugation_model.pt`           | ML-only model checkpoint (no exception table, ~99.97%)     |
 | `train_model.py`                 | Training script (produces `conjugation_model.pt`)          |
 | `build_final_model.py`           | Builds the final model by adding the exception table       |
 | `export_weights.py`              | Export weights to portable format for Swift package         |

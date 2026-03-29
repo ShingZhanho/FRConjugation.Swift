@@ -1,4 +1,4 @@
-// ConjugationTests.swift — Unit tests for the FRConjugation Swift library.
+// ConjugationTests.swift -- Unit tests for the FRConjugation Swift library.
 //
 // The model is now bundled as Swift package resources (model.json + weights.bin).
 // No external model directory or C library required.
@@ -37,10 +37,10 @@ final class ConjugationTests: XCTestCase {
             conjugator = try Conjugator()
             return
         } catch {
-            // Bundle.module may not work during development builds — fall back
+            // Bundle.module may not work during development builds -- fall back
         }
         guard let dir = modelDir else {
-            print("⚠️  Could not find model files — skipping tests")
+            print("[WARNING]  Could not find model files -- skipping tests")
             return
         }
         do {
@@ -64,6 +64,18 @@ final class ConjugationTests: XCTestCase {
     func testVerbCount() throws {
         let conj = try c
         XCTAssertGreaterThan(conj.verbCount, 6000)
+    }
+
+    func testAllVerbs() throws {
+        let conj = try c
+        let verbs = conj.allVerbs
+        XCTAssertEqual(verbs.count, conj.verbCount)
+        // Must be sorted
+        XCTAssertEqual(verbs, verbs.sorted())
+        // Spot-check known verbs
+        XCTAssertTrue(verbs.contains("parler"))
+        XCTAssertTrue(verbs.contains("être"))
+        XCTAssertFalse(verbs.contains("xyzzy"))
     }
 
     func testHasVerb() throws {
@@ -202,13 +214,13 @@ final class ConjugationTests: XCTestCase {
 
     func testPasseCompose() throws {
         let conj = try c
-        // "aller" uses être → agreement
+        // "aller" uses être -> agreement
         XCTAssertEqual(
             conj.conjugate("aller", voice: .activeEtre, mode: .indicatif, tense: .passeCompose,
                            person: .thirdSingularFeminine),
             "est allée"
         )
-        // "parler" uses avoir → no agreement
+        // "parler" uses avoir -> no agreement
         XCTAssertEqual(
             conj.conjugate("parler", voice: .activeAvoir, mode: .indicatif, tense: .passeCompose,
                            person: .firstSingularMasculine),
@@ -283,7 +295,7 @@ final class ConjugationTests: XCTestCase {
         }
     }
 
-    // MARK: - Third Person Singular Neutral (3sn — reciprocal verbs)
+    // MARK: - Third Person Singular Neutral (3sn -- reciprocal verbs)
 
     func testThirdSingularNeutral() throws {
         let conj = try c
@@ -478,5 +490,70 @@ final class ConjugationTests: XCTestCase {
 
         // Reset so other tests get default
         Conjugator._resetShared()
+    }
+
+    // MARK: - Variant Forms (Spelling Alternatives)
+
+    func testConjugateReturnsPrimaryForm() throws {
+        let conj = try c
+        // "abréger" futur_simple 1sm has two variants: abrégerai;abrègerai
+        let form = conj.conjugate("abréger", voice: .activeAvoir, mode: .indicatif,
+                                   tense: .futurSimple, person: .firstSingularMasculine)
+        XCTAssertEqual(form, "abrégerai")
+    }
+
+    func testConjugateAlternativeReturnsSecondForm() throws {
+        let conj = try c
+        let alt = conj.conjugateAlternative("abréger", voice: .activeAvoir, mode: .indicatif,
+                                             tense: .futurSimple, person: .firstSingularMasculine)
+        XCTAssertEqual(alt, "abrègerai")
+    }
+
+    func testHasAlternativeFormTrue() throws {
+        let conj = try c
+        XCTAssertTrue(conj.hasAlternativeForm("abréger", voice: .activeAvoir, mode: .indicatif,
+                                               tense: .futurSimple, person: .firstSingularMasculine))
+    }
+
+    func testHasAlternativeFormFalse() throws {
+        let conj = try c
+        // "parler" has no variant forms
+        XCTAssertFalse(conj.hasAlternativeForm("parler", voice: .activeAvoir, mode: .indicatif,
+                                                tense: .present, person: .firstSingularMasculine))
+    }
+
+    func testAlternativeFallsBackToDefault() throws {
+        let conj = try c
+        // "parler" has no alternatives -- both methods should return the same
+        let primary = conj.conjugate("parler", voice: .activeAvoir, mode: .indicatif,
+                                      tense: .present, person: .firstSingularMasculine)
+        let alt = conj.conjugateAlternative("parler", voice: .activeAvoir, mode: .indicatif,
+                                             tense: .present, person: .firstSingularMasculine)
+        XCTAssertEqual(primary, alt)
+        XCTAssertEqual(primary, "parle")
+    }
+
+    func testAlternativeInvalidCombinationReturnsNil() throws {
+        let conj = try c
+        XCTAssertNil(conj.conjugateAlternative("xyzzy", voice: .activeAvoir, mode: .indicatif,
+                                                tense: .present, person: .firstSingularMasculine))
+    }
+
+    func testBatchConjugateReturnsPrimaryForms() throws {
+        let conj = try c
+        let forms = conj.conjugate("abréger", voice: .activeAvoir, mode: .indicatif, tense: .futurSimple)
+        // Batch should return primary (first) form
+        XCTAssertEqual(forms[.firstSingularMasculine], "abrégerai")
+    }
+
+    func testConditionnelAlternativeForm() throws {
+        let conj = try c
+        // abréger conditionnel present 1sm: abrégerais;abrègerais
+        let primary = conj.conjugate("abréger", voice: .activeAvoir, mode: .conditionnel,
+                                      tense: .present, person: .firstSingularMasculine)
+        let alt = conj.conjugateAlternative("abréger", voice: .activeAvoir, mode: .conditionnel,
+                                             tense: .present, person: .firstSingularMasculine)
+        XCTAssertEqual(primary, "abrégerais")
+        XCTAssertEqual(alt, "abrègerais")
     }
 }

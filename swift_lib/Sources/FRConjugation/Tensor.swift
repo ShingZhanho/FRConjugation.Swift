@@ -1,4 +1,4 @@
-// Tensor.swift — Lightweight dense tensor backed by a flat Float array.
+// Tensor.swift -- Lightweight dense tensor backed by a flat Float array.
 //
 // Uses Apple's Accelerate framework (vDSP / cblas) for matrix operations.
 
@@ -7,7 +7,7 @@ import Foundation
 
 /// A simple dense tensor storing row-major Float data.
 ///
-/// This is an internal type used by the inference engine — it is *not*
+/// This is an internal type used by the inference engine -- it is *not*
 /// a general-purpose tensor library.  Only the operations needed for
 /// seq2seq inference are implemented.
 struct Tensor {
@@ -55,7 +55,7 @@ extension Tensor {
         set { data[i] = newValue }
     }
 
-    /// 2-D subscript (row, col) — assumes shape has 2 dimensions.
+    /// 2-D subscript (row, col) -- assumes shape has 2 dimensions.
     subscript(r: Int, c: Int) -> Float {
         get { data[r * shape[1] + c] }
         set { data[r * shape[1] + c] = newValue }
@@ -124,7 +124,7 @@ extension Tensor {
 // MARK: - Matrix Operations (cblas / vDSP)
 
 extension Tensor {
-    /// Matrix-vector product: self (M×K) * vec (K) → result (M).
+    /// Matrix-vector product: self (MxK) * vec (K) -> result (M).
     func matvec(_ vec: Tensor) -> Tensor {
         let M = shape[0]
         let K = shape[1]
@@ -140,7 +140,7 @@ extension Tensor {
         return Tensor(data: result, shape: [M])
     }
 
-    /// Matrix multiply: self (M×K) × other (K×N) → result (M×N).
+    /// Matrix multiply: self (MxK) x other (KxN) -> result (MxN).
     func matmul(_ other: Tensor) -> Tensor {
         let M = shape[0]
         let K = shape[1]

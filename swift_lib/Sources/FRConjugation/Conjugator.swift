@@ -1,4 +1,4 @@
-// Conjugator.swift — Idiomatic Swift interface to the French verb conjugation model.
+// Conjugator.swift -- Idiomatic Swift interface to the French verb conjugation model.
 
 import Foundation
 
@@ -13,7 +13,7 @@ import Foundation
 /// pronominal) with 13 gender-explicit person keys (including `3sn`
 /// for the pronoun *on* in reciprocal verbs).
 ///
-/// All conjugation forms — including compound tenses and participles —
+/// All conjugation forms -- including compound tenses and participles --
 /// are predicted directly by the neural model (with an exception table
 /// for the tiny fraction it gets wrong).
 ///
@@ -23,23 +23,23 @@ import Foundation
 /// // Single form
 /// c.conjugate("aller", voice: .activeEtre, mode: .indicatif,
 ///             tense: .present, person: .firstSingularMasculine)
-/// // → "vais"
+/// // -> "vais"
 ///
 /// // All persons for a tense
 /// let forms = c.conjugate("finir", voice: .activeAvoir,
 ///                         mode: .indicatif, tense: .imparfait)
-/// // → [.firstSingularMasculine: "finissais", ...]
+/// // -> [.firstSingularMasculine: "finissais", ...]
 ///
 /// // Discover valid voices for a verb
 /// c.voices("aller")
-/// // → [.activeEtre, .pronominal]
+/// // -> [.activeEtre, .pronominal]
 /// ```
 ///
 /// ## Caching
 ///
 /// Each `Conjugator` instance maintains an internal **LRU cache** that
 /// stores previously-predicted forms indexed by verb infinitive.  The
-/// cache size is measured in **verbs** — all forms for the same verb
+/// cache size is measured in **verbs** -- all forms for the same verb
 /// share a single cache slot.
 ///
 /// ```swift
@@ -79,10 +79,10 @@ public final class Conjugator: @unchecked Sendable {
     /// may optionally pass `cacheSize` on the *first* call to configure
     /// the cache; subsequent calls ignore the parameter.
     ///
-    ///     // First call — sets cache to 128 verbs:
+    ///     // First call -- sets cache to 128 verbs:
     ///     let fr = Conjugator.getShared(cacheSize: 128)
     ///
-    ///     // Later calls — returns the same instance (cacheSize ignored):
+    ///     // Later calls -- returns the same instance (cacheSize ignored):
     ///     let fr = Conjugator.getShared()
     ///
     /// - Parameter cacheSize: Maximum number of verbs to cache.
@@ -111,7 +111,7 @@ public final class Conjugator: @unchecked Sendable {
         }
     }
 
-    /// Reset the shared singleton.  Internal — used by tests to ensure
+    /// Reset the shared singleton.  Internal -- used by tests to ensure
     /// a fresh state between test methods.
     static func _resetShared() {
         _sharedLock.lock()
@@ -182,6 +182,16 @@ public final class Conjugator: @unchecked Sendable {
         return engine.knownVerbs.count
     }
 
+    /// A sorted list of all verb infinitives known to the model.
+    ///
+    ///     conjugator.allVerbs
+    ///     // ["abaisser", "abandonner", "abasourdir", ...]
+    public var allVerbs: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return engine.knownVerbs.sorted()
+    }
+
     /// The maximum number of verbs the LRU cache can hold.
     ///
     /// Returns `0` if caching is disabled.
@@ -238,7 +248,7 @@ public final class Conjugator: @unchecked Sendable {
     /// List available voices for a verb.
     ///
     ///     conjugator.voices("aller")
-    ///     // → [.activeEtre, .pronominal]
+    ///     // -> [.activeEtre, .pronominal]
     public func voices(_ infinitive: String) -> [Voice] {
         lock.lock()
         defer { lock.unlock() }
@@ -299,14 +309,39 @@ public final class Conjugator: @unchecked Sendable {
         return result
     }
 
+    // MARK: - Form Splitting
+
+    /// Extract the primary (first) form from a raw prediction that may
+    /// contain semicolon-separated alternatives (e.g. "abrégerai;abrègerai").
+    private static func primaryForm(_ raw: String) -> String {
+        if let idx = raw.firstIndex(of: ";") {
+            return String(raw[raw.startIndex..<idx])
+        }
+        return raw
+    }
+
+    /// Extract the alternative (second) form from a raw prediction,
+    /// falling back to the primary form when no alternative exists.
+    private static func alternativeForm(_ raw: String) -> String {
+        if let idx = raw.firstIndex(of: ";") {
+            return String(raw[raw.index(after: idx)...])
+        }
+        return raw
+    }
+
     // MARK: - Conjugation (Single Form)
 
     /// Conjugate a single form.
     ///
+    /// When the model predicts multiple spelling variants (e.g.
+    /// *abrégerai* / *abrègerai*), this method returns the **primary**
+    /// (first) variant.  Use ``conjugateAlternative(_:voice:mode:tense:person:)``
+    /// to obtain the alternative spelling.
+    ///
     ///     conjugator.conjugate("aller", voice: .activeEtre,
     ///         mode: .indicatif, tense: .present,
     ///         person: .firstSingularMasculine)
-    ///     // → "vais"
+    ///     // -> "vais"
     ///
     /// - Returns: The conjugated form, or `nil` if the combination is
     ///   invalid or the verb is unknown.
@@ -326,13 +361,86 @@ public final class Conjugator: @unchecked Sendable {
             return nil
         }
 
-        return cachedPredict(
+        guard let raw = cachedPredict(
             infinitive: infinitive,
             voice: voice.rawValue,
             mode: mode.rawValue,
             tense: tense.rawValue,
             person: person.rawValue
-        )
+        ) else { return nil }
+        return Self.primaryForm(raw)
+    }
+
+    /// Return the alternative spelling for a single conjugated form.
+    ///
+    /// If the form has two spelling variants (e.g. *abrégerai* /
+    /// *abrègerai*), this returns the **second** variant.  When only
+    /// one spelling exists, it behaves identically to
+    /// ``conjugate(_:voice:mode:tense:person:)``.
+    ///
+    ///     conjugator.conjugateAlternative("abréger",
+    ///         voice: .activeAvoir, mode: .indicatif,
+    ///         tense: .futurSimple, person: .firstSingularMasculine)
+    ///     // -> "abrègerai"
+    ///
+    /// - Returns: The alternative (or only) conjugated form, or `nil`
+    ///   if the combination is invalid.
+    public func conjugateAlternative(
+        _ infinitive: String,
+        voice: Voice,
+        mode: Mode,
+        tense: Tense,
+        person: Person
+    ) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard let persons = engine.verbStructure[infinitive]?[voice.rawValue]?[mode.rawValue]?[tense.rawValue],
+              persons.contains(person.rawValue) else {
+            return nil
+        }
+
+        guard let raw = cachedPredict(
+            infinitive: infinitive,
+            voice: voice.rawValue,
+            mode: mode.rawValue,
+            tense: tense.rawValue,
+            person: person.rawValue
+        ) else { return nil }
+        return Self.alternativeForm(raw)
+    }
+
+    /// Whether the given conjugation has an alternative spelling variant.
+    ///
+    ///     conjugator.hasAlternativeForm("abréger",
+    ///         voice: .activeAvoir, mode: .indicatif,
+    ///         tense: .futurSimple, person: .firstSingularMasculine)
+    ///     // -> true
+    ///
+    /// - Returns: `true` if there are two spelling variants, `false` otherwise.
+    public func hasAlternativeForm(
+        _ infinitive: String,
+        voice: Voice,
+        mode: Mode,
+        tense: Tense,
+        person: Person
+    ) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard let persons = engine.verbStructure[infinitive]?[voice.rawValue]?[mode.rawValue]?[tense.rawValue],
+              persons.contains(person.rawValue) else {
+            return false
+        }
+
+        guard let raw = cachedPredict(
+            infinitive: infinitive,
+            voice: voice.rawValue,
+            mode: mode.rawValue,
+            tense: tense.rawValue,
+            person: person.rawValue
+        ) else { return false }
+        return raw.contains(";")
     }
 
     /// Conjugate all persons for a given voice, mode and tense.
@@ -361,7 +469,7 @@ public final class Conjugator: @unchecked Sendable {
                 tense: tense.rawValue,
                 person: pKey
             ) {
-                result[person] = form
+                result[person] = Self.primaryForm(form)
             }
         }
         return result
@@ -369,7 +477,7 @@ public final class Conjugator: @unchecked Sendable {
 
     /// Conjugate all tenses and persons for a voice and mode.
     ///
-    /// - Returns: A nested dictionary: tense → person → form.
+    /// - Returns: A nested dictionary: tense -> person -> form.
     public func conjugate(
         _ infinitive: String,
         voice: Voice,
@@ -395,7 +503,7 @@ public final class Conjugator: @unchecked Sendable {
                     tense: tenseKey,
                     person: pKey
                 ) {
-                    tenseResult[person] = form
+                    tenseResult[person] = Self.primaryForm(form)
                 }
             }
             if !tenseResult.isEmpty {
@@ -407,7 +515,7 @@ public final class Conjugator: @unchecked Sendable {
 
     /// Conjugate all modes, tenses and persons for a voice.
     ///
-    /// - Returns: A nested dictionary: mode → tense → person → form.
+    /// - Returns: A nested dictionary: mode -> tense -> person -> form.
     public func conjugate(
         _ infinitive: String,
         voice: Voice
@@ -435,7 +543,7 @@ public final class Conjugator: @unchecked Sendable {
                         tense: tenseKey,
                         person: pKey
                     ) {
-                        tenseResult[person] = form
+                        tenseResult[person] = Self.primaryForm(form)
                     }
                 }
                 if !tenseResult.isEmpty {
@@ -451,7 +559,7 @@ public final class Conjugator: @unchecked Sendable {
 
     /// Conjugate all voices, modes, tenses and persons for a verb.
     ///
-    /// - Returns: A nested dictionary: voice → mode → tense → person → form,
+    /// - Returns: A nested dictionary: voice -> mode -> tense -> person -> form,
     ///   or `nil` if the verb is unknown.
     public func conjugate(
         _ infinitive: String
@@ -482,7 +590,7 @@ public final class Conjugator: @unchecked Sendable {
                             tense: tenseKey,
                             person: pKey
                         ) {
-                            tenseResult[person] = form
+                            tenseResult[person] = Self.primaryForm(form)
                         }
                     }
                     if !tenseResult.isEmpty {
@@ -506,11 +614,11 @@ public final class Conjugator: @unchecked Sendable {
     ///
     ///     conjugator.participle("partir", voice: .activeEtre,
     ///                           tense: .passeFemininPluriel)
-    ///     // → "parties"
+    ///     // -> "parties"
     ///
     ///     conjugator.participle("parler", voice: .activeAvoir,
     ///                           tense: .present)
-    ///     // → "parlant"
+    ///     // -> "parlant"
     ///
     /// - Parameters:
     ///   - infinitive: The verb infinitive.
@@ -518,6 +626,10 @@ public final class Conjugator: @unchecked Sendable {
     ///   - tense: Which participle form to retrieve (e.g. `.present`,
     ///     `.passeMasculinSingulier`, `.passeFemininPluriel`).
     /// - Returns: The participle string, or `nil` if unavailable.
+    /// Get a single participle form.
+    ///
+    /// When variants exist, returns the **primary** form.
+    /// Use ``participleAlternative(_:voice:tense:)`` for the alternative.
     public func participle(
         _ infinitive: String,
         voice: Voice,
@@ -529,19 +641,71 @@ public final class Conjugator: @unchecked Sendable {
               persons.contains("-") else {
             return nil
         }
-        return cachedPredict(
+        guard let raw = cachedPredict(
             infinitive: infinitive,
             voice: voice.rawValue,
             mode: "participe",
             tense: tense.rawValue,
             person: "-"
-        )
+        ) else { return nil }
+        return Self.primaryForm(raw)
+    }
+
+    /// Return the alternative spelling for a single participle form.
+    ///
+    /// If only one spelling exists, behaves identically to
+    /// ``participle(_:voice:tense:)``.
+    public func participleAlternative(
+        _ infinitive: String,
+        voice: Voice,
+        tense: Tense
+    ) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let persons = engine.verbStructure[infinitive]?[voice.rawValue]?["participe"]?[tense.rawValue],
+              persons.contains("-") else {
+            return nil
+        }
+        guard let raw = cachedPredict(
+            infinitive: infinitive,
+            voice: voice.rawValue,
+            mode: "participe",
+            tense: tense.rawValue,
+            person: "-"
+        ) else { return nil }
+        return Self.alternativeForm(raw)
+    }
+
+    /// Whether the given participle has an alternative spelling variant.
+    public func hasAlternativeParticiple(
+        _ infinitive: String,
+        voice: Voice,
+        tense: Tense
+    ) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let persons = engine.verbStructure[infinitive]?[voice.rawValue]?["participe"]?[tense.rawValue],
+              persons.contains("-") else {
+            return false
+        }
+        guard let raw = cachedPredict(
+            infinitive: infinitive,
+            voice: voice.rawValue,
+            mode: "participe",
+            tense: tense.rawValue,
+            person: "-"
+        ) else { return false }
+        return raw.contains(";")
     }
 
     /// Get all participle forms for a verb in a given voice.
     ///
+    /// Returns the **primary** form for each tense.  Use
+    /// ``participleAlternative(_:voice:tense:)`` for individual
+    /// alternative lookups.
+    ///
     ///     conjugator.participles("partir", voice: .activeEtre)
-    ///     // → [.present: "partant", .passeMasculinSingulier: "parti",
+    ///     // -> [.present: "partant", .passeMasculinSingulier: "parti",
     ///     //    .passeFemininSingulier: "partie", ...]
     ///
     /// - Returns: A dictionary mapping each available tense to its participle form.
@@ -565,7 +729,7 @@ public final class Conjugator: @unchecked Sendable {
                 tense: tenseKey,
                 person: "-"
             ) {
-                result[tense] = form
+                result[tense] = Self.primaryForm(form)
             }
         }
         return result
@@ -581,6 +745,21 @@ public final class Conjugator: @unchecked Sendable {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let result = self.participle(infinitive, voice: voice, tense: tense)
+                continuation.resume(returning: result)
+            }
+        }
+    }
+
+    /// Async variant of ``participleAlternative(_:voice:tense:)``.
+    @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+    public func participleAlternative(
+        _ infinitive: String,
+        voice: Voice,
+        tense: Tense
+    ) async -> String? {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let result = self.participleAlternative(infinitive, voice: voice, tense: tense)
                 continuation.resume(returning: result)
             }
         }
@@ -665,6 +844,24 @@ public final class Conjugator: @unchecked Sendable {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let result = self.conjugate(infinitive, voice: voice, mode: mode, tense: tense)
+                continuation.resume(returning: result)
+            }
+        }
+    }
+
+    /// Return the alternative spelling for a single form asynchronously.
+    @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+    public func conjugateAlternative(
+        _ infinitive: String,
+        voice: Voice,
+        mode: Mode,
+        tense: Tense,
+        person: Person
+    ) async -> String? {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let result = self.conjugateAlternative(infinitive, voice: voice, mode: mode,
+                                                       tense: tense, person: person)
                 continuation.resume(returning: result)
             }
         }

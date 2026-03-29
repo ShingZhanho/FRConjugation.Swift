@@ -1,8 +1,8 @@
-// VerbCache.swift — Thread-safe LRU cache keyed by verb infinitive.
+// VerbCache.swift -- Thread-safe LRU cache keyed by verb infinitive.
 //
 // Each cache entry stores *all* predicted forms for a single verb,
 // across every voice/mode/tense/person combination.  The cache size
-// is measured in **verbs** — not individual forms.
+// is measured in **verbs** -- not individual forms.
 
 import Foundation
 
@@ -10,7 +10,7 @@ import Foundation
 
 /// All cached predictions for a single verb infinitive.
 ///
-/// This is an internal type — callers interact with the cache
+/// This is an internal type -- callers interact with the cache
 /// exclusively through ``Conjugator``.
 struct VerbCacheEntry {
     /// Predicted forms: key = "voice|mode|tense|person", value = conjugated form.
@@ -106,11 +106,11 @@ final class VerbCache {
         guard capacity > 0 else { return }
 
         if let node = map[verb] {
-            // Verb already cached — update the form and promote.
+            // Verb already cached -- update the form and promote.
             node.entry.forms[formKey] = value
             moveToFront(node)
         } else {
-            // New verb — evict LRU if full.
+            // New verb -- evict LRU if full.
             if map.count >= capacity {
                 evictLRU()
             }

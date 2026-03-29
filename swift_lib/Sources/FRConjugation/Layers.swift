@@ -1,10 +1,10 @@
-// Layers.swift — Neural network layer implementations for seq2seq inference.
+// Layers.swift -- Neural network layer implementations for seq2seq inference.
 //
 // These match the PyTorch architecture in french_conjugation_model.py exactly:
-//   Encoder  — Embedding + BiGRU
-//   Attention — Bahdanau (additive) attention
-//   Decoder  — Embedding + GRU + FC
-//   Bridge   — Linear + tanh
+//   Encoder  -- Embedding + BiGRU
+//   Attention -- Bahdanau (additive) attention
+//   Decoder  -- Embedding + GRU + FC
+//   Bridge   -- Linear + tanh
 //
 // All layers operate on `Tensor` and use no external ML framework.
 
@@ -21,7 +21,7 @@ import Foundation
 ///   n = tanh(W_in @ x + b_in + r * (W_hn @ h + b_hn))
 ///   h' = (1 - z) * n + z * h
 ///
-/// Weight layout: [W_ir; W_iz; W_in] concatenated along rows (3*hidden × input).
+/// Weight layout: [W_ir; W_iz; W_in] concatenated along rows (3*hidden x input).
 struct GRUCell {
     let hiddenDim: Int
     /// [3*hidden, input]
@@ -81,7 +81,7 @@ struct GRUCell {
 
 /// Bidirectional GRU encoder.
 ///
-/// Input: sequence of char indices → Embedding → BiGRU
+/// Input: sequence of char indices -> Embedding -> BiGRU
 /// Output: encoder outputs [seqLen, hidden*2], final hidden [hidden*2]
 struct EncoderLayer {
     let embedding: Tensor     // [vocabSize, embDim]
@@ -124,7 +124,7 @@ struct EncoderLayer {
             bwdOutputs[t] = hBwd.data
         }
 
-        // Concatenate forward and backward outputs → [seqLen, 2*hidden]
+        // Concatenate forward and backward outputs -> [seqLen, 2*hidden]
         var outputData = [Float]()
         outputData.reserveCapacity(seqLen * hiddenDim * 2)
         for t in 0..<seqLen {
@@ -133,7 +133,7 @@ struct EncoderLayer {
         }
         let outputs = Tensor(data: outputData, shape: [seqLen, hiddenDim * 2])
 
-        // Final hidden: cat(hFwd, hBwd) — hBwd is the state after
+        // Final hidden: cat(hFwd, hBwd) -- hBwd is the state after
         // processing the first token (index 0) from right to left.
         let hidden = Tensor.cat(
             Tensor.vector(fwdOutputs[seqLen - 1]),
@@ -152,9 +152,9 @@ struct EncoderLayer {
 /// weights = softmax(energy)
 /// context = weights @ encoder_outputs
 struct AttentionLayer {
-    /// [decHidden, encDim + decHidden] — W_attn
+    /// [decHidden, encDim + decHidden] -- W_attn
     let attnWeight: Tensor
-    /// [1, decHidden] — v
+    /// [1, decHidden] -- v
     let vWeight: Tensor
     let decHiddenDim: Int
 
@@ -231,7 +231,7 @@ struct DecoderLayer {
         let gruInput = Tensor.cat(emb, context)
         let newHidden = gru.step(x: gruInput, h: hidden)
 
-        // FC: cat(hidden, context, emb) → logits
+        // FC: cat(hidden, context, emb) -> logits
         let fcInput = Tensor.cat([newHidden, context, emb])
         let logits = fcWeight.matvec(fcInput).add(fcBias)
 
@@ -241,7 +241,7 @@ struct DecoderLayer {
 
 // MARK: - Bridge
 
-/// Bridge layer: maps encoder hidden + conditioning embeddings → decoder
+/// Bridge layer: maps encoder hidden + conditioning embeddings -> decoder
 /// initial hidden state.
 ///
 /// h_dec0 = tanh(W_bridge @ [enc_hidden ; voice_emb ; mode_emb ; tense_emb ; person_emb] + b_bridge)

@@ -1,4 +1,4 @@
-// Types.swift — Enums and value types for the FRConjugation library.
+// Types.swift -- Enums and value types for the FRConjugation library.
 
 import Foundation
 
@@ -83,7 +83,7 @@ public enum Tense: String, CaseIterable, Sendable, Hashable {
     case passeCompoundMasculinPluriel   = "passe_compound_pm"
     case passeCompoundFemininPluriel    = "passe_compound_pf"
 
-    // Participle sub-forms (gendered present — passive voice)
+    // Participle sub-forms (gendered present -- passive voice)
     case presentMasculinSingulier = "present_sm"
     case presentFemininSingulier  = "present_sf"
     case presentMasculinPluriel   = "present_pm"

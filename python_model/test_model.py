@@ -262,6 +262,20 @@ f = m.conjugate("aimer", voice="voix_passive", mode="participe",
 check("aimer passive participe present_pf",
       f == "\u00e9tant aim\u00e9es", f"got '{f}'")
 
+# -- 15. Multi-form conjugations (semicolon-separated alternatives) --------
+
+print("\n-- Multi-form conjugations --")
+
+f = m.conjugate("abr\u00e9ger", voice="voix_active_avoir", mode="indicatif",
+                tense="futur_simple", person="1sm")
+check("abr\u00e9ger futur_simple 1sm (multi-form)",
+      f == "abr\u00e9gerai;abr\u00e8gerai", f"got '{f}'")
+
+f = m.conjugate("abr\u00e9ger", voice="voix_active_avoir", mode="conditionnel",
+                tense="present", person="1sm")
+check("abr\u00e9ger cond.present 1sm (multi-form)",
+      f == "abr\u00e9gerais;abr\u00e8gerais", f"got '{f}'")
+
 # -- Summary ---------------------------------------------------------------
 
 print(f"\n{'='*40}")

@@ -88,6 +88,7 @@ _SPOT_CHECK = [
     ("\u00eatre",  "voix_active_avoir", "subjonctif", "pr\u00e9sent", "1sm", "sois"),
     ("aimer", "voix_passive",      "indicatif", "pr\u00e9sent", "1sm", "suis aim\u00e9"),
     ("laver", "voix_prono",        "indicatif", "pr\u00e9sent", "1sm", "me lave"),
+    ("abr\u00e9ger", "voix_active_avoir", "indicatif", "futur_simple", "1sm", "abr\u00e9gerai;abr\u00e8gerai"),
 ]
 
 
@@ -134,8 +135,8 @@ def load_training_data():
     seen = set()
 
     for inf, voice, mode, tense, person_merged, form in cur.fetchall():
-        # take first variant if semicolon-separated (reform variants)
-        form = form.split(";")[0].strip()
+        # keep full semicolon-separated form (alternative conjugations)
+        form = form.strip()
 
         # expand merged person keys into individual training examples
         for person in _expand_person_key(person_merged):
@@ -165,7 +166,7 @@ def load_training_data():
 
     part_seen = set()
     for inf, voice, forme, participe in cur.fetchall():
-        participe = participe.split(";")[0].strip()
+        participe = participe.strip()
         key = (inf, voice, forme)
         if key in part_seen:
             continue

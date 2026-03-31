@@ -176,20 +176,38 @@ public final class Conjugator: @unchecked Sendable {
     // MARK: - Properties
 
     /// The number of verbs the model recognises.
+    ///
+    /// Homonym groups (e.g. `ressortir_1`, `ressortir_2`) count as a single verb.
     public var verbCount: Int {
         lock.lock()
         defer { lock.unlock() }
-        return engine.knownVerbs.count
+        // Each homonym group contributes 1 base name instead of N suffixed entries.
+        var count = engine.knownVerbs.count
+        for (_, indices) in engine.homonymMap {
+            count -= indices.count
+            count += 1
+        }
+        return count
     }
 
     /// A sorted list of all verb infinitives known to the model.
+    ///
+    /// Homonym-suffixed entries (e.g. `ressortir_1`, `ressortir_2`) are
+    /// collapsed into their base infinitive (`ressortir`).
     ///
     ///     conjugator.allVerbs
     ///     // ["abaisser", "abandonner", "abasourdir", ...]
     public var allVerbs: [String] {
         lock.lock()
         defer { lock.unlock() }
-        return engine.knownVerbs.sorted()
+        var verbs = engine.knownVerbs
+        for (base, indices) in engine.homonymMap {
+            for idx in indices {
+                verbs.remove("\(base)_\(idx)")
+            }
+            verbs.insert(base)
+        }
+        return verbs.sorted()
     }
 
     /// The maximum number of verbs the LRU cache can hold.
@@ -216,10 +234,15 @@ public final class Conjugator: @unchecked Sendable {
     // MARK: - Queries
 
     /// Whether the model recognises this infinitive.
+    ///
+    /// For verbs with homonyms (e.g. *ressortir*), returns `true` for
+    /// the base name even though the internal keys are suffixed
+    /// (*ressortir_1*, *ressortir_2*).
     public func hasVerb(_ infinitive: String) -> Bool {
         lock.lock()
         defer { lock.unlock() }
         return engine.knownVerbs.contains(infinitive)
+            || engine.homonymMap[infinitive] != nil
     }
 
     /// Whether a verb beginning with *h* is h-aspiré (no elision/liaison).
@@ -243,40 +266,101 @@ public final class Conjugator: @unchecked Sendable {
         return engine.reformVariantes[infinitive]
     }
 
+    // MARK: - Homonym Queries
+
+    /// Whether the given base infinitive has multiple homonym entries.
+    ///
+    ///     conjugator.hasHomonyms("ressortir")  // true
+    ///     conjugator.hasHomonyms("parler")     // false
+    public func hasHomonyms(_ infinitive: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return engine.homonymMap[infinitive] != nil
+    }
+
+    /// The number of homonym entries for a verb, or 1 if it has no homonyms.
+    ///
+    ///     conjugator.homonymCount("ressortir")  // 2
+    ///     conjugator.homonymCount("parler")     // 1
+    public func homonymCount(_ infinitive: String) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return engine.homonymMap[infinitive]?.count ?? 1
+    }
+
+    /// The available homonym indices for a verb, or an empty array if none.
+    ///
+    ///     conjugator.homonymIndices("ressortir")  // [1, 2]
+    ///     conjugator.homonymIndices("parler")     // []
+    public func homonymIndices(_ infinitive: String) -> [Int] {
+        lock.lock()
+        defer { lock.unlock() }
+        return engine.homonymMap[infinitive] ?? []
+    }
+
+    // MARK: - Homonym Key Resolution
+
+    /// Resolve a user-facing infinitive + optional homonym index to the
+    /// internal DB key used for lookups.
+    ///
+    /// - If the infinitive is directly known (e.g. "parler"), returns it as-is.
+    /// - If the infinitive has homonyms and `homonymIndex` is nil, defaults to
+    ///   the first index (1).
+    /// - If `homonymIndex` is provided, returns "`infinitive`_`index`".
+    ///
+    /// **Must be called while `lock` is held.**
+    private func resolveKey(_ infinitive: String, homonymIndex: Int?) -> String {
+        // Direct match — no homonyms
+        if engine.knownVerbs.contains(infinitive) {
+            return infinitive
+        }
+        // Homonym verb — resolve to suffixed key
+        if let indices = engine.homonymMap[infinitive] {
+            let idx = homonymIndex ?? indices.first ?? 1
+            return "\(infinitive)_\(idx)"
+        }
+        // Unknown verb — return as-is (will fail downstream)
+        return infinitive
+    }
+
     // MARK: - Structure Queries
 
     /// List available voices for a verb.
     ///
     ///     conjugator.voices("aller")
     ///     // -> [.activeEtre, .pronominal]
-    public func voices(_ infinitive: String) -> [Voice] {
+    public func voices(_ infinitive: String, homonymIndex: Int? = nil) -> [Voice] {
         lock.lock()
         defer { lock.unlock() }
-        guard let struct_ = engine.verbStructure[infinitive] else { return [] }
+        let key = resolveKey(infinitive, homonymIndex: homonymIndex)
+        guard let struct_ = engine.verbStructure[key] else { return [] }
         return struct_.keys.sorted().compactMap { Voice(rawValue: $0) }
     }
 
     /// List available modes for a verb in a given voice.
-    public func modes(_ infinitive: String, voice: Voice) -> [Mode] {
+    public func modes(_ infinitive: String, voice: Voice, homonymIndex: Int? = nil) -> [Mode] {
         lock.lock()
         defer { lock.unlock() }
-        guard let voiceStruct = engine.verbStructure[infinitive]?[voice.rawValue] else { return [] }
+        let key = resolveKey(infinitive, homonymIndex: homonymIndex)
+        guard let voiceStruct = engine.verbStructure[key]?[voice.rawValue] else { return [] }
         return voiceStruct.keys.sorted().compactMap { Mode(rawValue: $0) }
     }
 
     /// List available tenses for a verb in a given voice and mode.
-    public func tenses(_ infinitive: String, voice: Voice, mode: Mode) -> [Tense] {
+    public func tenses(_ infinitive: String, voice: Voice, mode: Mode, homonymIndex: Int? = nil) -> [Tense] {
         lock.lock()
         defer { lock.unlock() }
-        guard let modeStruct = engine.verbStructure[infinitive]?[voice.rawValue]?[mode.rawValue] else { return [] }
+        let key = resolveKey(infinitive, homonymIndex: homonymIndex)
+        guard let modeStruct = engine.verbStructure[key]?[voice.rawValue]?[mode.rawValue] else { return [] }
         return modeStruct.keys.sorted().compactMap { Tense(rawValue: $0) }
     }
 
     /// List available persons for a verb in a given voice, mode and tense.
-    public func persons(_ infinitive: String, voice: Voice, mode: Mode, tense: Tense) -> [Person] {
+    public func persons(_ infinitive: String, voice: Voice, mode: Mode, tense: Tense, homonymIndex: Int? = nil) -> [Person] {
         lock.lock()
         defer { lock.unlock() }
-        guard let persons = engine.verbStructure[infinitive]?[voice.rawValue]?[mode.rawValue]?[tense.rawValue] else { return [] }
+        let key = resolveKey(infinitive, homonymIndex: homonymIndex)
+        guard let persons = engine.verbStructure[key]?[voice.rawValue]?[mode.rawValue]?[tense.rawValue] else { return [] }
         return persons.compactMap { Person(rawValue: $0) }
     }
 
@@ -350,19 +434,22 @@ public final class Conjugator: @unchecked Sendable {
         voice: Voice,
         mode: Mode,
         tense: Tense,
-        person: Person
+        person: Person,
+        homonymIndex: Int? = nil
     ) -> String? {
         lock.lock()
         defer { lock.unlock() }
 
+        let key = resolveKey(infinitive, homonymIndex: homonymIndex)
+
         // Validate against verb_structure
-        guard let persons = engine.verbStructure[infinitive]?[voice.rawValue]?[mode.rawValue]?[tense.rawValue],
+        guard let persons = engine.verbStructure[key]?[voice.rawValue]?[mode.rawValue]?[tense.rawValue],
               persons.contains(person.rawValue) else {
             return nil
         }
 
         guard let raw = cachedPredict(
-            infinitive: infinitive,
+            infinitive: key,
             voice: voice.rawValue,
             mode: mode.rawValue,
             tense: tense.rawValue,
@@ -390,18 +477,21 @@ public final class Conjugator: @unchecked Sendable {
         voice: Voice,
         mode: Mode,
         tense: Tense,
-        person: Person
+        person: Person,
+        homonymIndex: Int? = nil
     ) -> String? {
         lock.lock()
         defer { lock.unlock() }
 
-        guard let persons = engine.verbStructure[infinitive]?[voice.rawValue]?[mode.rawValue]?[tense.rawValue],
+        let key = resolveKey(infinitive, homonymIndex: homonymIndex)
+
+        guard let persons = engine.verbStructure[key]?[voice.rawValue]?[mode.rawValue]?[tense.rawValue],
               persons.contains(person.rawValue) else {
             return nil
         }
 
         guard let raw = cachedPredict(
-            infinitive: infinitive,
+            infinitive: key,
             voice: voice.rawValue,
             mode: mode.rawValue,
             tense: tense.rawValue,
@@ -423,18 +513,21 @@ public final class Conjugator: @unchecked Sendable {
         voice: Voice,
         mode: Mode,
         tense: Tense,
-        person: Person
+        person: Person,
+        homonymIndex: Int? = nil
     ) -> Bool {
         lock.lock()
         defer { lock.unlock() }
 
-        guard let persons = engine.verbStructure[infinitive]?[voice.rawValue]?[mode.rawValue]?[tense.rawValue],
+        let key = resolveKey(infinitive, homonymIndex: homonymIndex)
+
+        guard let persons = engine.verbStructure[key]?[voice.rawValue]?[mode.rawValue]?[tense.rawValue],
               persons.contains(person.rawValue) else {
             return false
         }
 
         guard let raw = cachedPredict(
-            infinitive: infinitive,
+            infinitive: key,
             voice: voice.rawValue,
             mode: mode.rawValue,
             tense: tense.rawValue,
@@ -450,12 +543,15 @@ public final class Conjugator: @unchecked Sendable {
         _ infinitive: String,
         voice: Voice,
         mode: Mode,
-        tense: Tense
+        tense: Tense,
+        homonymIndex: Int? = nil
     ) -> [Person: String] {
         lock.lock()
         defer { lock.unlock() }
 
-        guard let personKeys = engine.verbStructure[infinitive]?[voice.rawValue]?[mode.rawValue]?[tense.rawValue] else {
+        let key = resolveKey(infinitive, homonymIndex: homonymIndex)
+
+        guard let personKeys = engine.verbStructure[key]?[voice.rawValue]?[mode.rawValue]?[tense.rawValue] else {
             return [:]
         }
 
@@ -463,7 +559,7 @@ public final class Conjugator: @unchecked Sendable {
         for pKey in personKeys {
             guard let person = Person(rawValue: pKey) else { continue }
             if let form = cachedPredict(
-                infinitive: infinitive,
+                infinitive: key,
                 voice: voice.rawValue,
                 mode: mode.rawValue,
                 tense: tense.rawValue,
@@ -481,12 +577,15 @@ public final class Conjugator: @unchecked Sendable {
     public func conjugate(
         _ infinitive: String,
         voice: Voice,
-        mode: Mode
+        mode: Mode,
+        homonymIndex: Int? = nil
     ) -> [Tense: [Person: String]] {
         lock.lock()
         defer { lock.unlock() }
 
-        guard let modeStruct = engine.verbStructure[infinitive]?[voice.rawValue]?[mode.rawValue] else {
+        let key = resolveKey(infinitive, homonymIndex: homonymIndex)
+
+        guard let modeStruct = engine.verbStructure[key]?[voice.rawValue]?[mode.rawValue] else {
             return [:]
         }
 
@@ -497,7 +596,7 @@ public final class Conjugator: @unchecked Sendable {
             for pKey in personKeys {
                 guard let person = Person(rawValue: pKey) else { continue }
                 if let form = cachedPredict(
-                    infinitive: infinitive,
+                    infinitive: key,
                     voice: voice.rawValue,
                     mode: mode.rawValue,
                     tense: tenseKey,
@@ -518,12 +617,15 @@ public final class Conjugator: @unchecked Sendable {
     /// - Returns: A nested dictionary: mode -> tense -> person -> form.
     public func conjugate(
         _ infinitive: String,
-        voice: Voice
+        voice: Voice,
+        homonymIndex: Int? = nil
     ) -> [Mode: [Tense: [Person: String]]] {
         lock.lock()
         defer { lock.unlock() }
 
-        guard let voiceStruct = engine.verbStructure[infinitive]?[voice.rawValue] else {
+        let key = resolveKey(infinitive, homonymIndex: homonymIndex)
+
+        guard let voiceStruct = engine.verbStructure[key]?[voice.rawValue] else {
             return [:]
         }
 
@@ -537,7 +639,7 @@ public final class Conjugator: @unchecked Sendable {
                 for pKey in personKeys {
                     guard let person = Person(rawValue: pKey) else { continue }
                     if let form = cachedPredict(
-                        infinitive: infinitive,
+                        infinitive: key,
                         voice: voice.rawValue,
                         mode: modeKey,
                         tense: tenseKey,
@@ -562,12 +664,15 @@ public final class Conjugator: @unchecked Sendable {
     /// - Returns: A nested dictionary: voice -> mode -> tense -> person -> form,
     ///   or `nil` if the verb is unknown.
     public func conjugate(
-        _ infinitive: String
+        _ infinitive: String,
+        homonymIndex: Int? = nil
     ) -> [Voice: [Mode: [Tense: [Person: String]]]]? {
         lock.lock()
         defer { lock.unlock() }
 
-        guard let verbStruct = engine.verbStructure[infinitive] else {
+        let key = resolveKey(infinitive, homonymIndex: homonymIndex)
+
+        guard let verbStruct = engine.verbStructure[key] else {
             return nil
         }
 
@@ -584,7 +689,7 @@ public final class Conjugator: @unchecked Sendable {
                     for pKey in personKeys {
                         guard let person = Person(rawValue: pKey) else { continue }
                         if let form = cachedPredict(
-                            infinitive: infinitive,
+                            infinitive: key,
                             voice: voiceKey,
                             mode: modeKey,
                             tense: tenseKey,
@@ -633,16 +738,18 @@ public final class Conjugator: @unchecked Sendable {
     public func participle(
         _ infinitive: String,
         voice: Voice,
-        tense: Tense
+        tense: Tense,
+        homonymIndex: Int? = nil
     ) -> String? {
         lock.lock()
         defer { lock.unlock() }
-        guard let persons = engine.verbStructure[infinitive]?[voice.rawValue]?["participe"]?[tense.rawValue],
+        let key = resolveKey(infinitive, homonymIndex: homonymIndex)
+        guard let persons = engine.verbStructure[key]?[voice.rawValue]?["participe"]?[tense.rawValue],
               persons.contains("-") else {
             return nil
         }
         guard let raw = cachedPredict(
-            infinitive: infinitive,
+            infinitive: key,
             voice: voice.rawValue,
             mode: "participe",
             tense: tense.rawValue,
@@ -658,16 +765,18 @@ public final class Conjugator: @unchecked Sendable {
     public func participleAlternative(
         _ infinitive: String,
         voice: Voice,
-        tense: Tense
+        tense: Tense,
+        homonymIndex: Int? = nil
     ) -> String? {
         lock.lock()
         defer { lock.unlock() }
-        guard let persons = engine.verbStructure[infinitive]?[voice.rawValue]?["participe"]?[tense.rawValue],
+        let key = resolveKey(infinitive, homonymIndex: homonymIndex)
+        guard let persons = engine.verbStructure[key]?[voice.rawValue]?["participe"]?[tense.rawValue],
               persons.contains("-") else {
             return nil
         }
         guard let raw = cachedPredict(
-            infinitive: infinitive,
+            infinitive: key,
             voice: voice.rawValue,
             mode: "participe",
             tense: tense.rawValue,
@@ -680,16 +789,18 @@ public final class Conjugator: @unchecked Sendable {
     public func hasAlternativeParticiple(
         _ infinitive: String,
         voice: Voice,
-        tense: Tense
+        tense: Tense,
+        homonymIndex: Int? = nil
     ) -> Bool {
         lock.lock()
         defer { lock.unlock() }
-        guard let persons = engine.verbStructure[infinitive]?[voice.rawValue]?["participe"]?[tense.rawValue],
+        let key = resolveKey(infinitive, homonymIndex: homonymIndex)
+        guard let persons = engine.verbStructure[key]?[voice.rawValue]?["participe"]?[tense.rawValue],
               persons.contains("-") else {
             return false
         }
         guard let raw = cachedPredict(
-            infinitive: infinitive,
+            infinitive: key,
             voice: voice.rawValue,
             mode: "participe",
             tense: tense.rawValue,
@@ -742,7 +853,8 @@ public final class Conjugator: @unchecked Sendable {
         voice: Voice,
         mode: Mode,
         tense: Tense,
-        person: Person
+        person: Person,
+        homonymIndex: Int? = nil
     ) -> String? {
         // No subject pronoun for imperatif or participe
         guard mode != .imperatif, mode != .participe else { return nil }
@@ -750,13 +862,15 @@ public final class Conjugator: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
+        let key = resolveKey(infinitive, homonymIndex: homonymIndex)
+
         // Validate combination and get the conjugated form
-        guard let persons = engine.verbStructure[infinitive]?[voice.rawValue]?[mode.rawValue]?[tense.rawValue],
+        guard let persons = engine.verbStructure[key]?[voice.rawValue]?[mode.rawValue]?[tense.rawValue],
               persons.contains(person.rawValue) else {
             return nil
         }
         guard let raw = cachedPredict(
-            infinitive: infinitive,
+            infinitive: key,
             voice: voice.rawValue,
             mode: mode.rawValue,
             tense: tense.rawValue,
@@ -827,23 +941,26 @@ public final class Conjugator: @unchecked Sendable {
         voice: Voice,
         mode: Mode,
         tense: Tense,
-        person: Person
+        person: Person,
+        homonymIndex: Int? = nil
     ) -> String? {
         // Modes with no subject pronoun -- return bare form
         if mode == .imperatif || mode == .participe {
             return conjugate(infinitive, voice: voice, mode: mode,
-                             tense: tense, person: person)
+                             tense: tense, person: person, homonymIndex: homonymIndex)
         }
 
         lock.lock()
         defer { lock.unlock() }
 
-        guard let persons = engine.verbStructure[infinitive]?[voice.rawValue]?[mode.rawValue]?[tense.rawValue],
+        let key = resolveKey(infinitive, homonymIndex: homonymIndex)
+
+        guard let persons = engine.verbStructure[key]?[voice.rawValue]?[mode.rawValue]?[tense.rawValue],
               persons.contains(person.rawValue) else {
             return nil
         }
         guard let raw = cachedPredict(
-            infinitive: infinitive,
+            infinitive: key,
             voice: voice.rawValue,
             mode: mode.rawValue,
             tense: tense.rawValue,
@@ -875,22 +992,25 @@ public final class Conjugator: @unchecked Sendable {
         voice: Voice,
         mode: Mode,
         tense: Tense,
-        person: Person
+        person: Person,
+        homonymIndex: Int? = nil
     ) -> String? {
         if mode == .imperatif || mode == .participe {
             return conjugateAlternative(infinitive, voice: voice, mode: mode,
-                                        tense: tense, person: person)
+                                        tense: tense, person: person, homonymIndex: homonymIndex)
         }
 
         lock.lock()
         defer { lock.unlock() }
 
-        guard let persons = engine.verbStructure[infinitive]?[voice.rawValue]?[mode.rawValue]?[tense.rawValue],
+        let key = resolveKey(infinitive, homonymIndex: homonymIndex)
+
+        guard let persons = engine.verbStructure[key]?[voice.rawValue]?[mode.rawValue]?[tense.rawValue],
               persons.contains(person.rawValue) else {
             return nil
         }
         guard let raw = cachedPredict(
-            infinitive: infinitive,
+            infinitive: key,
             voice: voice.rawValue,
             mode: mode.rawValue,
             tense: tense.rawValue,
@@ -915,11 +1035,13 @@ public final class Conjugator: @unchecked Sendable {
     /// - Returns: A dictionary mapping each available tense to its participle form.
     public func participles(
         _ infinitive: String,
-        voice: Voice
+        voice: Voice,
+        homonymIndex: Int? = nil
     ) -> [Tense: String] {
         lock.lock()
         defer { lock.unlock() }
-        guard let tenseMap = engine.verbStructure[infinitive]?[voice.rawValue]?["participe"] else {
+        let key = resolveKey(infinitive, homonymIndex: homonymIndex)
+        guard let tenseMap = engine.verbStructure[key]?[voice.rawValue]?["participe"] else {
             return [:]
         }
         var result = [Tense: String]()
@@ -927,7 +1049,7 @@ public final class Conjugator: @unchecked Sendable {
             guard let tense = Tense(rawValue: tenseKey),
                   personKeys.contains("-") else { continue }
             if let form = cachedPredict(
-                infinitive: infinitive,
+                infinitive: key,
                 voice: voice.rawValue,
                 mode: "participe",
                 tense: tenseKey,
@@ -944,11 +1066,13 @@ public final class Conjugator: @unchecked Sendable {
     public func participle(
         _ infinitive: String,
         voice: Voice,
-        tense: Tense
+        tense: Tense,
+        homonymIndex: Int? = nil
     ) async -> String? {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
-                let result = self.participle(infinitive, voice: voice, tense: tense)
+                let result = self.participle(infinitive, voice: voice, tense: tense,
+                                             homonymIndex: homonymIndex)
                 continuation.resume(returning: result)
             }
         }
@@ -959,11 +1083,13 @@ public final class Conjugator: @unchecked Sendable {
     public func participleAlternative(
         _ infinitive: String,
         voice: Voice,
-        tense: Tense
+        tense: Tense,
+        homonymIndex: Int? = nil
     ) async -> String? {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
-                let result = self.participleAlternative(infinitive, voice: voice, tense: tense)
+                let result = self.participleAlternative(infinitive, voice: voice, tense: tense,
+                                                       homonymIndex: homonymIndex)
                 continuation.resume(returning: result)
             }
         }
@@ -976,12 +1102,14 @@ public final class Conjugator: @unchecked Sendable {
         voice: Voice,
         mode: Mode,
         tense: Tense,
-        person: Person
+        person: Person,
+        homonymIndex: Int? = nil
     ) async -> String? {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let result = self.getPronoun(infinitive, voice: voice, mode: mode,
-                                             tense: tense, person: person)
+                                             tense: tense, person: person,
+                                             homonymIndex: homonymIndex)
                 continuation.resume(returning: result)
             }
         }
@@ -994,12 +1122,14 @@ public final class Conjugator: @unchecked Sendable {
         voice: Voice,
         mode: Mode,
         tense: Tense,
-        person: Person
+        person: Person,
+        homonymIndex: Int? = nil
     ) async -> String? {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let result = self.conjugateWithPronoun(infinitive, voice: voice, mode: mode,
-                                                      tense: tense, person: person)
+                                                      tense: tense, person: person,
+                                                      homonymIndex: homonymIndex)
                 continuation.resume(returning: result)
             }
         }
@@ -1012,12 +1142,14 @@ public final class Conjugator: @unchecked Sendable {
         voice: Voice,
         mode: Mode,
         tense: Tense,
-        person: Person
+        person: Person,
+        homonymIndex: Int? = nil
     ) async -> String? {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let result = self.conjugateAlternativeWithPronoun(infinitive, voice: voice, mode: mode,
-                                                                  tense: tense, person: person)
+                                                                  tense: tense, person: person,
+                                                                  homonymIndex: homonymIndex)
                 continuation.resume(returning: result)
             }
         }
@@ -1080,12 +1212,14 @@ public final class Conjugator: @unchecked Sendable {
         voice: Voice,
         mode: Mode,
         tense: Tense,
-        person: Person
+        person: Person,
+        homonymIndex: Int? = nil
     ) async -> String? {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let result = self.conjugate(infinitive, voice: voice, mode: mode,
-                                            tense: tense, person: person)
+                                            tense: tense, person: person,
+                                            homonymIndex: homonymIndex)
                 continuation.resume(returning: result)
             }
         }
@@ -1097,11 +1231,13 @@ public final class Conjugator: @unchecked Sendable {
         _ infinitive: String,
         voice: Voice,
         mode: Mode,
-        tense: Tense
+        tense: Tense,
+        homonymIndex: Int? = nil
     ) async -> [Person: String] {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
-                let result = self.conjugate(infinitive, voice: voice, mode: mode, tense: tense)
+                let result = self.conjugate(infinitive, voice: voice, mode: mode, tense: tense,
+                                            homonymIndex: homonymIndex)
                 continuation.resume(returning: result)
             }
         }
@@ -1114,12 +1250,14 @@ public final class Conjugator: @unchecked Sendable {
         voice: Voice,
         mode: Mode,
         tense: Tense,
-        person: Person
+        person: Person,
+        homonymIndex: Int? = nil
     ) async -> String? {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let result = self.conjugateAlternative(infinitive, voice: voice, mode: mode,
-                                                       tense: tense, person: person)
+                                                       tense: tense, person: person,
+                                                       homonymIndex: homonymIndex)
                 continuation.resume(returning: result)
             }
         }

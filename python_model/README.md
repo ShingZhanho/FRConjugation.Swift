@@ -11,12 +11,12 @@ training scripts, evaluation tools, and a reusable Python module.
 | `train_model.py` | Training script (reads `verbs.db`) |
 | `build_final_model.py` | Embeds exception table -> `conjugation_model_final.pt` |
 | `test_model.py` | Unit tests |
-| `full_test_model.py` | Full-DB validation (2,553,802 forms) |
+| `full_test_model.py` | Full-DB validation |
 | `export_weights.py` | Export to portable format for the Swift package |
 | `USAGE.md` | Detailed Python API reference (voices, modes, tenses, persons, aliases) |
 | `conjugation_model_final.pt` | Final checkpoint -- ML + 771 exceptions (100%) |
 | `conjugation_model.pt` | ML-only checkpoint (~99.97%) |
-| `verbs.db` | SQLite database (6,298 verbs, 5 voices, 2,553,802 forms) |
+| `verbs.db` | SQLite database (6,358 verbs incl. homonyms, 5 voices) |
 
 ## Data Source
 
@@ -97,5 +97,5 @@ python3 full_test_model.py [path/to/model.pt]
 | Bridge | Linear + tanh: encoder hidden + 4 conditioning embeddings -> decoder initial hidden |
 | Parameters | ~1,540,000 |
 | Exception table | 771 hard-coded corrections for 100% accuracy |
-| Accuracy | **100%** on 2,553,802 forms across 6,298 verbs (5 voices) |
+| Accuracy | **100%** on 6,358 verbs (5 voices) |
 | Size | ~6 MB |

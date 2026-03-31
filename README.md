@@ -3,8 +3,9 @@
 A **pure Swift** package for conjugating French verbs, powered by a character-level seq2seq
 neural network with Bahdanau attention.
 
-Covers **6,298 verbs** across **5 voices**, all modes, tenses, and
-13 gender-explicit persons -- **2,553,802 conjugated forms** at **100% accuracy**.
+Covers **6,358 verbs** across **5 voices**, all modes, tenses, and
+13 gender-explicit persons -- including **64 homonym groups** where the
+same infinitive conjugates differently depending on meaning.
 
 **Zero external dependencies.** Uses Apple's Accelerate framework for fast matrix operations.
 No LibTorch, no CoreML, no Python runtime needed.
@@ -45,14 +46,18 @@ fr.participle("prendre", voice: .activeAvoir, tense: .passeFemininPluriel)
 - **Variant forms** -- some forms have alternative spellings (e.g. 1990
   reform variants separated by `;` in the database).  The primary form
   is returned by default; dedicated methods expose the alternative.
+- **Homonym support** -- 64 verb groups (e.g. *ressortir*) have multiple
+  conjugation patterns.  Use `hasHomonyms`, `homonymCount`, and
+  `homonymIndices` to discover them; pass `homonymIndex` to any
+  conjugation method to select the pattern (defaults to 1).
 - **Pronoun generation** -- `getPronoun` returns the contextual French
   subject pronoun with correct elision (`j'` before vowels/h-muet) and
   *que*/*qu'* prefix for the subjonctif.  `conjugateWithPronoun` and
   `conjugateAlternativeWithPronoun` produce ready-to-display strings.
 - **Structure queries** -- discover available voices, modes, tenses, and
   persons for any verb dynamically.
-- **Verb listing** -- `allVerbs` returns a sorted list of all 6,298
-  supported verb infinitives.
+- **Verb listing** -- `allVerbs` returns a sorted list of all 6,358
+  supported verb infinitives (homonym groups counted once).
 - **LRU cache** -- configurable per-instance verb cache for repeated lookups.
 - **1990 reform** -- query whether a verb has reform spellings and get
   the variant form.
@@ -84,7 +89,7 @@ Add the package dependency in your `Package.swift`:
 
 ```swift
 dependencies: [
-  .package(url: "https://github.com/ShingZhanho/FRConjugation.Swift.git", from: "4.1.0"),
+  .package(url: "https://github.com/ShingZhanho/FRConjugation.Swift.git", from: "4.2.0"),
 ]
 ```
 
@@ -220,6 +225,39 @@ fr.conjugateAlternativeWithPronoun("abreger", voice: .activeAvoir,
 
 All pronoun methods have async overloads.
 
+#### Homonyms
+
+Some French verbs share the same infinitive but conjugate differently
+depending on meaning (e.g. *ressortir* -- 3rd group "to stand out" vs
+2nd group "to be under the jurisdiction of").  In the database these are
+stored as `ressortir_1` and `ressortir_2`, but the public API uses the
+bare infinitive with an optional `homonymIndex`.
+
+```swift
+fr.hasHomonyms("ressortir")       // true
+fr.homonymCount("ressortir")      // 2
+fr.homonymIndices("ressortir")    // [1, 2]
+
+// Defaults to index 1 when omitted
+fr.conjugate("ressortir", voice: .activeAvoir, mode: .indicatif,
+             tense: .present, person: .firstSingularMasculine)
+// -> "ressors"  (3rd group)
+
+// Explicitly select index 2
+fr.conjugate("ressortir", voice: .activeAvoir, mode: .indicatif,
+             tense: .present, person: .firstSingularMasculine,
+             homonymIndex: 2)
+// -> "ressortis"  (2nd group)
+
+// Non-homonym verbs are unaffected
+fr.hasHomonyms("parler")          // false
+fr.homonymCount("parler")         // 1
+```
+
+The `homonymIndex` parameter is available on **all** conjugation,
+participle, structure query, and pronoun methods (both sync and async).
+For non-homonym verbs it is silently ignored.
+
 #### Participles
 
 ```swift
@@ -258,8 +296,12 @@ fr.hasVerb("parler")            // true
 fr.isHAspire("hair")            // true
 fr.is1990Reform("ceder")        // true
 fr.reformVariante("ceder")      // Optional("ceder")
-fr.verbCount                    // 6298
+fr.verbCount                    // 6298 (homonym groups counted once)
 fr.allVerbs                     // ["abaisser", "abandonner", ..., "zozoter"]
+
+fr.hasHomonyms("ressortir")     // true
+fr.homonymCount("ressortir")    // 2
+fr.homonymIndices("ressortir")  // [1, 2]
 ```
 
 #### Caching
@@ -391,7 +433,7 @@ No LibTorch, no C library, no linker flags.
 | Bridge | Linear + tanh: encoder hidden + 4 conditioning embeddings -> decoder initial state |
 | Exception table | 771 hard-coded corrections embedded in model metadata |
 | Parameters | ~1,540,000 |
-| Accuracy | **100%** on 2,553,802 forms across 6,298 verbs (5 voices) |
+| Accuracy | **100%** on 6,358 verbs (5 voices) |
 | Model size | ~6 MB (weights.bin) + ~474 KB (model.json) |
 
 ---

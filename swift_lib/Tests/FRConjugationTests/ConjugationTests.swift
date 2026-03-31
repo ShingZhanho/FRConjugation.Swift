@@ -784,4 +784,57 @@ final class ConjugationTests: XCTestCase {
                                                            person: .firstSingularMasculine)
         XCTAssertNil(result)
     }
+
+    // MARK: - Homonym Support
+
+    func testHasHomonymsReturnsFalseForNormalVerb() throws {
+        let conj = try c
+        XCTAssertFalse(conj.hasHomonyms("parler"))
+    }
+
+    func testHomonymCountReturnsOneForNormalVerb() throws {
+        let conj = try c
+        XCTAssertEqual(conj.homonymCount("parler"), 1)
+    }
+
+    func testHomonymIndicesReturnsEmptyForNormalVerb() throws {
+        let conj = try c
+        XCTAssertTrue(conj.homonymIndices("parler").isEmpty)
+    }
+
+    func testHomonymIndexNilDefaultsToNormalBehaviour() throws {
+        let conj = try c
+        // Passing homonymIndex: nil to a non-homonym verb works normally
+        let form = conj.conjugate("parler", voice: .activeAvoir, mode: .indicatif,
+                                   tense: .present, person: .firstSingularMasculine,
+                                   homonymIndex: nil)
+        XCTAssertEqual(form, "parle")
+    }
+
+    func testAllVerbsExcludesSuffixedHomonyms() throws {
+        let conj = try c
+        let verbs = conj.allVerbs
+        // No verb in allVerbs should end with _1, _2, etc.
+        for verb in verbs {
+            if let underscoreRange = verb.range(of: "_", options: .backwards) {
+                let suffix = verb[verb.index(after: underscoreRange.lowerBound)...]
+                XCTAssertNil(Int(suffix), "allVerbs should not contain suffixed homonym '\(verb)'")
+            }
+        }
+    }
+
+    func testHasVerbRecognisesHomonymBaseName() throws {
+        let conj = try c
+        // If the model has any homonym verbs, the base name should be recognised
+        let verbs = conj.allVerbs
+        for verb in verbs {
+            XCTAssertTrue(conj.hasVerb(verb),
+                          "hasVerb should recognise '\(verb)' from allVerbs")
+        }
+    }
+
+    func testVerbCountMatchesAllVerbsCount() throws {
+        let conj = try c
+        XCTAssertEqual(conj.verbCount, conj.allVerbs.count)
+    }
 }

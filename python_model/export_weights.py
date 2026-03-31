@@ -20,6 +20,27 @@ import numpy as np
 import torch
 
 
+def _build_homonym_map(known_verbs):
+    """Build a map from base verb name to sorted list of homonym indices.
+
+    e.g. if known_verbs contains "ressortir_1" and "ressortir_2",
+    returns {"ressortir": [1, 2]}.
+    """
+    import re
+    hmap = {}
+    pattern = re.compile(r'^(.+)_(\d+)$')
+    for v in known_verbs:
+        m = pattern.match(v)
+        if m:
+            base = m.group(1)
+            idx = int(m.group(2))
+            hmap.setdefault(base, []).append(idx)
+    # Sort indices
+    for base in hmap:
+        hmap[base].sort()
+    return hmap
+
+
 def export(checkpoint_path, output_dir):
     os.makedirs(output_dir, exist_ok=True)
 
@@ -77,6 +98,7 @@ def export(checkpoint_path, output_dir):
         "reform_variantes": cp.get("reform_variantes", {}),
         "verb_structure_templates": cp.get("verb_structure_templates", []),
         "verb_structure_ids": cp.get("verb_structure_ids", {}),
+        "homonym_map": _build_homonym_map(cp.get("known_verbs", [])),
         "weight_manifest": manifest,
     }
 

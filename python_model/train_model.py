@@ -80,15 +80,18 @@ DOWNSAMPLE_PRONO = 0.25     # keep 25% of pronominal rows
 
 # Spot-check forms each epoch
 _SPOT_CHECK = [
-    ("\u00eatre",  "voix_active_avoir", "indicatif", "pr\u00e9sent", "1sm", "suis"),
-    ("avoir", "voix_active_avoir", "indicatif", "pr\u00e9sent", "1sm", "ai"),
-    ("aller", "voix_active_etre",  "indicatif", "pr\u00e9sent", "1sm", "vais"),
-    ("faire", "voix_active_avoir", "indicatif", "pr\u00e9sent", "1sm", "fais"),
-    ("venir", "voix_active_etre",  "indicatif", "pr\u00e9sent", "1sm", "viens"),
-    ("\u00eatre",  "voix_active_avoir", "subjonctif", "pr\u00e9sent", "1sm", "sois"),
-    ("aimer", "voix_passive",      "indicatif", "pr\u00e9sent", "1sm", "suis aim\u00e9"),
-    ("laver", "voix_prono",        "indicatif", "pr\u00e9sent", "1sm", "me lave"),
+    ("\u00eatre",  "voix_active_avoir", "indicatif", "present", "1sm", "suis"),
+    ("avoir", "voix_active_avoir", "indicatif", "present", "1sm", "ai"),
+    ("aller", "voix_active_etre",  "indicatif", "present", "1sm", "vais"),
+    ("faire", "voix_active_avoir", "indicatif", "present", "1sm", "fais"),
+    ("venir", "voix_active_etre",  "indicatif", "present", "1sm", "viens"),
+    ("\u00eatre",  "voix_active_avoir", "subjonctif", "present", "1sm", "sois"),
+    ("aimer", "voix_passive",      "indicatif", "present", "1sm", "suis aim\u00e9"),
+    ("laver", "voix_prono",        "indicatif", "present", "1sm", "me lave"),
     ("abr\u00e9ger", "voix_active_avoir", "indicatif", "futur_simple", "1sm", "abr\u00e9gerai;abr\u00e8gerai"),
+    # Homonym spot-checks: ressortir_1 (3rd grp) vs ressortir_2 (2nd grp)
+    ("ressortir_1", "voix_active_avoir", "indicatif", "present", "1sm", "ressors"),
+    ("ressortir_2", "voix_active_avoir", "indicatif", "present", "1sm", "ressortis"),
 ]
 
 
@@ -477,8 +480,8 @@ def train():
     log_file = setup_logging()
 
     print("=" * 60)
-    print("  French Verb Conjugation -- Model Training (v3)")
-    print("  All voices, expanded person keys, compound tenses")
+    print("  French Verb Conjugation -- Model Training (v4)")
+    print("  verbs.db v0.4.0: homonym verbs, all voices")
     print("=" * 60)
 
     # check for resume checkpoint before loading data

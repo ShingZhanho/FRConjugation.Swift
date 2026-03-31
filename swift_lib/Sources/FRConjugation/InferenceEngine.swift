@@ -38,6 +38,10 @@ final class InferenceEngine: @unchecked Sendable {
     let reform1990Verbs: Set<String>
     let reformVariantes: [String: String]
 
+    /// Maps a base verb name (e.g. "ressortir") to its sorted homonym indices (e.g. [1, 2]).
+    /// Only present for verbs that have `_N` suffixed variants in knownVerbs.
+    let homonymMap: [String: [Int]]
+
     /// Verb structure: verb -> { voice -> { mode -> { tense -> [person] } } }
     let verbStructure: [String: [String: [String: [String: [String]]]]]
 
@@ -100,10 +104,26 @@ final class InferenceEngine: @unchecked Sendable {
 
         // ── Parse metadata ───────────────────────────────────────────────
         self.exceptions = (root["exceptions"] as? [String: String]) ?? [:]
-        self.knownVerbs = Set((root["known_verbs"] as? [String]) ?? [])
         self.hAspire = Set((root["h_aspire"] as? [String]) ?? [])
         self.reform1990Verbs = Set((root["reform_1990_verbs"] as? [String]) ?? [])
         self.reformVariantes = (root["reform_variantes"] as? [String: String]) ?? [:]
+
+        // ── Build homonym map from known_verbs ───────────────────────────
+        // Scan for verbs matching the pattern "base_N" (e.g. "ressortir_1")
+        let knownVerbsList = (root["known_verbs"] as? [String]) ?? []
+        var hmap = [String: [Int]]()
+        for verb in knownVerbsList {
+            if let underscoreRange = verb.range(of: "_", options: .backwards),
+               let idx = Int(verb[verb.index(after: underscoreRange.lowerBound)...]) {
+                let base = String(verb[..<underscoreRange.lowerBound])
+                hmap[base, default: []].append(idx)
+            }
+        }
+        for key in hmap.keys {
+            hmap[key]?.sort()
+        }
+        self.homonymMap = hmap
+        self.knownVerbs = Set(knownVerbsList)
 
         // ── Reconstruct verb_structure from templates + ids ──────────────
         typealias VerbStruct = [String: [String: [String: [String]]]]

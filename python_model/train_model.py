@@ -674,8 +674,8 @@ def train():
         sc_ok, sc_n, sc_details = _spot_check(model, vocab)
 
         print(f"   Epoch {epoch:2d}/{EPOCHS}  loss={avg_loss:.4f}  "
-              f"val_acc={val_acc:.2f}%  spot={sc_ok}/{sc_n}  "
-              f"tf={tf_ratio:.2f}  lr={lr_now:.1e}  time={elapsed:.0f}s")
+              f"val_acc={val_acc:.5f}%  spot={sc_ok}/{sc_n}  "
+              f"tf={tf_ratio:.2f}  lr={lr_now:.1e}  time={elapsed:.0f}s  epochs_no_improve={epochs_no_improve}")
         for d in sc_details:
             print(f"     {d}")
 

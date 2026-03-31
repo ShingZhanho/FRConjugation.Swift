@@ -55,6 +55,11 @@ public enum Mode: String, CaseIterable, Sendable, Hashable {
 /// `.passeCompoundMasculinPluriel`, `.passeCompoundFemininPluriel`,
 /// `.presentMasculinSingulier`, `.presentFemininSingulier`,
 /// `.presentMasculinPluriel`, `.presentFemininPluriel`
+///
+/// ## Gérondif (dedicated -- use ``Conjugator/gerondif(_:voice:tense:)``)
+/// `.gerondifPresent`, `.gerondifPasseMasculinSingulier`,
+/// `.gerondifPasseFemininSingulier`, `.gerondifPasseMasculinPluriel`,
+/// `.gerondifPasseFemininPluriel`
 public enum Tense: String, CaseIterable, Sendable, Hashable {
     // Simple
     case present        = "present"
@@ -88,6 +93,13 @@ public enum Tense: String, CaseIterable, Sendable, Hashable {
     case presentFemininSingulier  = "present_sf"
     case presentMasculinPluriel   = "present_pm"
     case presentFemininPluriel    = "present_pf"
+
+    // Gérondif (derived -- not stored in the model)
+    case gerondifPresent                  = "gerondif_present"
+    case gerondifPasseMasculinSingulier   = "gerondif_passe_sm"
+    case gerondifPasseFemininSingulier    = "gerondif_passe_sf"
+    case gerondifPasseMasculinPluriel     = "gerondif_passe_pm"
+    case gerondifPasseFemininPluriel      = "gerondif_passe_pf"
 }
 
 // MARK: - Person

@@ -855,4 +855,78 @@ final class ConjugationTests: XCTestCase {
         let conj = try c
         XCTAssertEqual(conj.verbCount, conj.allVerbs.count)
     }
+
+    // MARK: - Gérondif
+
+    func testGerondifPresentActiveAvoir() throws {
+        let conj = try c
+        let form = conj.gerondif("parler", voice: .activeAvoir, tense: .gerondifPresent)
+        XCTAssertEqual(form, "en parlant")
+    }
+
+    func testGerondifPresentActiveEtre() throws {
+        let conj = try c
+        let form = conj.gerondif("aller", voice: .activeEtre, tense: .gerondifPresent)
+        XCTAssertNotNil(form)
+        XCTAssertTrue(form!.hasPrefix("en "), "gérondif présent should start with 'en '")
+    }
+
+    func testGerondifPresentPartirHomonym() throws {
+        let conj = try c
+        let form = conj.gerondif("partir", voice: .activeEtre, tense: .gerondifPresent, homonymIndex: 2)
+        XCTAssertEqual(form, "en partant")
+    }
+
+    func testGerondifPasseCompoundForms() throws {
+        let conj = try c
+        // activeAvoir compound passé participles include the auxiliary
+        let sm = conj.gerondif("parler", voice: .activeAvoir, tense: .gerondifPasseMasculinSingulier)
+        XCTAssertNotNil(sm, "gérondif passé masculin singulier should not be nil")
+        XCTAssertTrue(sm!.hasPrefix("en "), "gérondif passé should start with 'en '")
+
+        let sf = conj.gerondif("parler", voice: .activeAvoir, tense: .gerondifPasseFemininSingulier)
+        XCTAssertNotNil(sf)
+
+        let pm = conj.gerondif("parler", voice: .activeAvoir, tense: .gerondifPasseMasculinPluriel)
+        XCTAssertNotNil(pm)
+
+        let pf = conj.gerondif("parler", voice: .activeAvoir, tense: .gerondifPasseFemininPluriel)
+        XCTAssertNotNil(pf)
+    }
+
+    func testGerondifReturnsNilForNonGerondifTense() throws {
+        let conj = try c
+        let form = conj.gerondif("parler", voice: .activeAvoir, tense: .present)
+        XCTAssertNil(form, "gerondif() should return nil for non-gérondif tenses")
+    }
+
+    func testGerondifReturnsNilForUnknownVerb() throws {
+        let conj = try c
+        let form = conj.gerondif("xyznotaverb", voice: .activeAvoir, tense: .gerondifPresent)
+        XCTAssertNil(form)
+    }
+
+    func testGerondifNotInStructureQueries() throws {
+        let conj = try c
+        // Gérondif tenses should never appear in tenses() output
+        let tenses = conj.tenses("parler", voice: .activeAvoir, mode: .participe)
+        let gerondifTenses: Set<Tense> = [
+            .gerondifPresent,
+            .gerondifPasseMasculinSingulier, .gerondifPasseFemininSingulier,
+            .gerondifPasseMasculinPluriel, .gerondifPasseFemininPluriel
+        ]
+        for t in tenses {
+            XCTAssertFalse(gerondifTenses.contains(t),
+                           "tenses() should not return gérondif tense \(t)")
+        }
+    }
+
+    func testGerondifUsesCache() throws {
+        let conj = try c
+        conj.clearCache()
+        _ = conj.gerondif("manger", voice: .activeAvoir, tense: .gerondifPresent)
+        // The underlying participle call should have populated the cache
+        XCTAssertGreaterThan(conj.cacheCount, 0,
+                             "gerondif() should populate the cache via participle()")
+    }
 }

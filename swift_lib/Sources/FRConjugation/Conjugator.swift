@@ -207,7 +207,21 @@ public final class Conjugator: @unchecked Sendable {
             }
             verbs.insert(base)
         }
-        return verbs.sorted()
+        return verbs.sorted { a, b in
+            let ak = Conjugator.sortKey(a)
+            let bk = Conjugator.sortKey(b)
+            return ak == bk ? a < b : ak < bk
+        }
+    }
+
+    /// Produce a diacritics-insensitive, ligature-expanded sort key.
+    private static func sortKey(_ s: String) -> String {
+        s.replacingOccurrences(of: "œ", with: "oe")
+         .replacingOccurrences(of: "Œ", with: "OE")
+         .replacingOccurrences(of: "æ", with: "ae")
+         .replacingOccurrences(of: "Æ", with: "AE")
+         .folding(options: [.diacriticInsensitive, .widthInsensitive],
+                  locale: Locale(identifier: "fr"))
     }
 
     /// The maximum number of verbs the LRU cache can hold.

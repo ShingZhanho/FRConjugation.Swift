@@ -70,12 +70,30 @@ final class ConjugationTests: XCTestCase {
         let conj = try c
         let verbs = conj.allVerbs
         XCTAssertEqual(verbs.count, conj.verbCount)
-        // Must be sorted
-        XCTAssertEqual(verbs, verbs.sorted())
+        // Must be sorted by diacritics-insensitive, ligature-expanded key
+        func sortKey(_ s: String) -> String {
+            s.replacingOccurrences(of: "œ", with: "oe")
+             .replacingOccurrences(of: "Œ", with: "OE")
+             .replacingOccurrences(of: "æ", with: "ae")
+             .replacingOccurrences(of: "Æ", with: "AE")
+             .folding(options: [.diacriticInsensitive, .widthInsensitive],
+                      locale: Locale(identifier: "fr"))
+        }
+        let sorted = verbs.sorted { a, b in
+            let ak = sortKey(a), bk = sortKey(b)
+            return ak == bk ? a < b : ak < bk
+        }
+        XCTAssertEqual(verbs, sorted)
         // Spot-check known verbs
         XCTAssertTrue(verbs.contains("parler"))
         XCTAssertTrue(verbs.contains("être"))
         XCTAssertFalse(verbs.contains("xyzzy"))
+        // œuvrer folds to "oeuvrer" so it should sort near "o" verbs, not at the end
+        if let oeuvrerIdx = verbs.firstIndex(of: "œuvrer"),
+           let ouvrirIdx = verbs.firstIndex(of: "ouvrir") {
+            XCTAssertLessThan(oeuvrerIdx, ouvrirIdx,
+                              "œuvrer should sort before ouvrir (oe < ou)")
+        }
     }
 
     func testHasVerb() throws {

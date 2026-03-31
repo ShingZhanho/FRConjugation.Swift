@@ -92,7 +92,7 @@ Add the package dependency in your `Package.swift`:
 
 ```swift
 dependencies: [
-  .package(url: "https://github.com/ShingZhanho/FRConjugation.Swift.git", from: "4.2.1"),
+  .package(url: "https://github.com/ShingZhanho/FRConjugation.Swift.git", from: "4.2.2"),
 ]
 ```
 

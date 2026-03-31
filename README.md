@@ -40,6 +40,9 @@ fr.participle("prendre", voice: .activeAvoir, tense: .passeFemininPluriel)
 - **Participles** -- present participle, 4 gendered present participle
   forms, 4 simple past participle forms, and 4 compound past participle
   forms.
+- **Gérondif** -- gérondif présent ("en " + present participle) and 4
+  gendered gérondif passé forms ("en " + compound past participle).
+  Accessed via the dedicated `gerondif()` method.
 - **13 gender-explicit persons** -- masculine/feminine distinction for
   every person, plus a neutral third-person singular (`3sn`) for
   reciprocal verbs.
@@ -89,7 +92,7 @@ Add the package dependency in your `Package.swift`:
 
 ```swift
 dependencies: [
-  .package(url: "https://github.com/ShingZhanho/FRConjugation.Swift.git", from: "4.2.0"),
+  .package(url: "https://github.com/ShingZhanho/FRConjugation.Swift.git", from: "4.2.1"),
 ]
 ```
 
@@ -273,6 +276,31 @@ let parts: [Tense: String] = fr.participles("prendre", voice: .activeAvoir)
 //  .passeFemininSingulier: "prise", ...]
 ```
 
+#### Gérondif
+
+The gérondif is derived from participles by prepending *en*.  Use the
+dedicated `gerondif()` method -- gérondif forms are **not** returned by
+`conjugate()`, `participle()`, or structure query methods.
+
+```swift
+fr.gerondif("parler", voice: .activeAvoir, tense: .gerondifPresent)
+// -> "en parlant"
+
+fr.gerondif("parler", voice: .activeAvoir, tense: .gerondifPasseMasculinSingulier)
+// -> "en ayant parlé"
+
+// Returns nil if the underlying participle is unavailable
+fr.gerondif("xyzzy", voice: .activeAvoir, tense: .gerondifPresent)
+// -> nil
+```
+
+Five gérondif tenses are available:
+`.gerondifPresent`, `.gerondifPasseMasculinSingulier`,
+`.gerondifPasseFemininSingulier`, `.gerondifPasseMasculinPluriel`,
+`.gerondifPasseFemininPluriel`.
+
+Async overload available.  Supports `homonymIndex`.
+
 #### Structure Queries
 
 ```swift
@@ -321,7 +349,7 @@ share a single cache slot.  Pass `cacheSize: 0` at init to disable.
 |:-----|:------|
 | `Voice` | `.activeAvoir` `.activeEtre` `.active` `.passive` `.pronominal` |
 | `Mode` | `.indicatif` `.subjonctif` `.conditionnel` `.imperatif` `.participe` |
-| `Tense` | `.present` `.imparfait` `.passeSimple` `.futurSimple` `.passeCompose` `.plusQueParfait` `.passeAnterieur` `.futurAnterieur` `.passe` `.passeMasculinSingulier` `.passeFemininSingulier` `.passeMasculinPluriel` `.passeFemininPluriel` `.passeCompoundMasculinSingulier` `.passeCompoundFemininSingulier` `.passeCompoundMasculinPluriel` `.passeCompoundFemininPluriel` `.presentMasculinSingulier` `.presentFemininSingulier` `.presentMasculinPluriel` `.presentFemininPluriel` |
+| `Tense` | `.present` `.imparfait` `.passeSimple` `.futurSimple` `.passeCompose` `.plusQueParfait` `.passeAnterieur` `.futurAnterieur` `.passe` `.passeMasculinSingulier` `.passeFemininSingulier` `.passeMasculinPluriel` `.passeFemininPluriel` `.passeCompoundMasculinSingulier` `.passeCompoundFemininSingulier` `.passeCompoundMasculinPluriel` `.passeCompoundFemininPluriel` `.presentMasculinSingulier` `.presentFemininSingulier` `.presentMasculinPluriel` `.presentFemininPluriel` `.gerondifPresent` `.gerondifPasseMasculinSingulier` `.gerondifPasseFemininSingulier` `.gerondifPasseMasculinPluriel` `.gerondifPasseFemininPluriel` |
 | `Person` | `.firstSingularMasculine` `.firstSingularFeminine` `.secondSingularMasculine` `.secondSingularFeminine` `.thirdSingularMasculine` `.thirdSingularFeminine` `.thirdSingularNeutral` `.firstPluralMasculine` `.firstPluralFeminine` `.secondPluralMasculine` `.secondPluralFeminine` `.thirdPluralMasculine` `.thirdPluralFeminine` |
 
 Each `Person` case has a `.pronoun` property (`"je"`, `"tu"`, `"il"`, ...) and a `.shortLabel` (`"1sm"`, `"3pf"`, ...).
